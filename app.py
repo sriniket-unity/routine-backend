@@ -9,22 +9,26 @@ import json
 app = Flask(__name__)
 CORS(app)
 
-# --- AI SETUP ---
-# This pulls your free key from Render's environment variables
+# --- 🧠 AI SETUP (Gemini 3 Flash Preview) ---
+# Powered by the latest 2026 architecture
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
-model = genai.GenerativeModel('gemini-1.5-flash')
+model = genai.GenerativeModel('gemini-3-flash-preview')
 
-# --- GOOGLE SHEETS SETUP ---
+# --- 📊 GOOGLE SHEETS SETUP ---
 try:
     client_gs = gspread.service_account(filename='credentials.json')
     sheet = client_gs.open("overall_db")
+    
     timetable_ws = sheet.worksheet("Timetable")
     logs_ws = sheet.worksheet("Logs")
-    print("✅ Gemini Backend Live: Sheets Connected.")
+    
+    print("✅ Gemini 3 Flash Preview Backend: Connected & Active.")
 except Exception as e:
     print(f"❌ Connection Error: {e}")
 
-# --- CORE ROUTES ---
+@app.route('/', methods=['GET'])
+def home():
+    return jsonify({"message": "Sriniket's ADFS Backend (Gemini 3 Flash) is Live!"}), 200
 
 @app.route('/get_schedule', methods=['GET'])
 def get_schedule():
@@ -51,38 +55,39 @@ def log_session():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-# --- GEMINI PATTERN ANALYZER ---
-
 @app.route('/analyze_patterns', methods=['GET'])
 def analyze_patterns():
+    """Uses Gemini 3 Flash to optimize Sriniket's schedule."""
     try:
-        # 1. Fetch recent data for the AI to study
-        logs = logs_ws.get_all_values()[-15:] # Last 15 entries
+        logs = logs_ws.get_all_values()[-20:] # AI studies the last 20 entries
         timetable = timetable_ws.get_all_values()
         
-        # 2. The "Opal" AI Prompt
         prompt = f"""
-        You are an elite productivity coach. 
-        User Timetable: {timetable}
-        Recent Activity Logs: {logs}
+        User: Sriniket
+        Role: High-Performance DSA & Gym Coach
+        Context: Timetable is {timetable}. Actual logs are {logs}.
         
-        Task: Find a bottleneck (e.g., user is always late starting Study after Gym).
-        Suggest ONE specific adjustment. 
+        Task: Identify why Sriniket is missing his sessions or accumulating 'Time Debt'.
+        Provide ONE specific, high-impact suggestion.
         
-        IMPORTANT: Return ONLY a raw JSON object with these keys:
+        OUTPUT RULES: Return ONLY a raw JSON object. Do not use markdown.
+        Format: 
         {{
-            "title": "Short title of advice",
-            "message": "Detailed explanation of the pattern seen",
-            "action_target": "Exact name of activity to change",
-            "new_val": "Suggested new duration or time"
+            "title": "Clear Headline",
+            "message": "The reasoning behind the advice",
+            "action_target": "Activity Name",
+            "new_val": "Revised Duration/Time"
         }}
         """
         
+        # Using Gemini 3's fast generation
         response = model.generate_content(prompt)
-        # Clean up the response text in case Gemini adds markdown backticks
-        json_data = response.text.replace('```json', '').replace('```', '').strip()
         
-        return jsonify({"status": "success", "analysis": json.loads(json_data)}), 200
+        # Surgical cleaning of the AI response
+        raw_text = response.text.strip().replace('```json', '').replace('```', '')
+        ai_data = json.loads(raw_text)
+        
+        return jsonify({"status": "success", "analysis": ai_data}), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -93,11 +98,10 @@ def update_timetable():
         activity = data.get('activity')
         new_val = data.get('new_val')
         
-        # Find the activity in the Timetable sheet and update the duration column
         cell = timetable_ws.find(activity)
         timetable_ws.update_cell(cell.row, cell.col + 1, new_val)
         
-        return jsonify({"status": "success", "message": f"Updated {activity} successfully."}), 200
+        return jsonify({"status": "success", "message": f"Synced {activity} to {new_val}"}), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
