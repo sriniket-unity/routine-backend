@@ -9,9 +9,13 @@ CORS(app)
 
 # --- GOOGLE SHEETS SETUP ---
 try:
+    # Render will look for the 'credentials.json' file we added as a Secret File
     client = gspread.service_account(filename='credentials.json')
+    
+    # Opens your specific Google Sheet
     sheet = client.open("overall_db")
     
+    # Connects to your two tabs
     timetable_ws = sheet.worksheet("Timetable")
     logs_ws = sheet.worksheet("Logs")
     
@@ -27,8 +31,12 @@ def home():
 def get_schedule():
     """Reads the master timetable and sends it to your app."""
     try:
+        # head=2 because Row 1 is your '70 Hour Plan' title
         records = timetable_ws.get_all_records(head=2)
+        
+        # This removes any empty columns from the sheet data
         clean_records = [{k: v for k, v in record.items() if k != ''} for record in records]
+        
         return jsonify({"status": "success", "data": clean_records}), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -38,6 +46,7 @@ def log_session():
     """Receives checkout data and appends it to the Logs tab."""
     try:
         data = request.json
+        # Prep the row to match your Google Sheet columns
         row = [
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             data.get('activity', 'Unknown'),
@@ -54,13 +63,13 @@ def log_session():
 def clear_logs():
     """Deletes all entries in the Logs tab except the header row."""
     try:
-        # Get all current data to see how many rows we have
+        # Get all current values to determine the row count
         all_values = logs_ws.get_all_values()
         num_rows = len(all_values)
 
         if num_rows > 1:
             # delete_rows(start_index, end_index)
-            # We start at 2 to keep the headers in Row 1
+            # We start at 2 to preserve your headers in Row 1
             logs_ws.delete_rows(2, num_rows)
             return jsonify({"status": "success", "message": f"Cleared {num_rows - 1} log entries."}), 200
         else:
@@ -70,5 +79,6 @@ def clear_logs():
 
 # --- RUN THE SERVER ---
 if __name__ == '__main__':
+    # Dynamic port for Render deployment
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
