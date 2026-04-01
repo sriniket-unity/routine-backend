@@ -3,33 +3,32 @@ from flask_cors import CORS
 import gspread
 from datetime import datetime
 import os
+import google.generativeai as genai
+import json
 
 app = Flask(__name__)
 CORS(app)
 
+# --- AI SETUP ---
+# This pulls your free key from Render's environment variables
+genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+model = genai.GenerativeModel('gemini-1.5-flash')
+
 # --- GOOGLE SHEETS SETUP ---
 try:
-    client = gspread.service_account(filename='credentials.json')
-    sheet = client.open("overall_db")
-    
-    # Selecting your tabs
+    client_gs = gspread.service_account(filename='credentials.json')
+    sheet = client_gs.open("overall_db")
     timetable_ws = sheet.worksheet("Timetable")
     logs_ws = sheet.worksheet("Logs")
-    
-    print("✅ Backend Live: Protecting Row 1 headers only.")
+    print("✅ Gemini Backend Live: Sheets Connected.")
 except Exception as e:
-    print(f"❌ Error: {e}")
+    print(f"❌ Connection Error: {e}")
 
-@app.route('/', methods=['GET'])
-def home():
-    return jsonify({"message": "DSA Timer Backend is live!"}), 200
+# --- CORE ROUTES ---
 
 @app.route('/get_schedule', methods=['GET'])
 def get_schedule():
-    """Reads the master timetable."""
     try:
-        # Note: head=1 assumes your Timetable headers are also in Row 1.
-        # If your Timetable has a title in Row 1, keep this as head=2.
         records = timetable_ws.get_all_records(head=1)
         clean_records = [{k: v for k, v in record.items() if k != ''} for record in records]
         return jsonify({"status": "success", "data": clean_records}), 200
@@ -38,7 +37,6 @@ def get_schedule():
 
 @app.route('/log_session', methods=['POST'])
 def log_session():
-    """Appends a new study session to the Logs tab."""
     try:
         data = request.json
         row = [
@@ -53,20 +51,53 @@ def log_session():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/clear_logs', methods=['DELETE'])
-def clear_logs():
-    """Wipes everything except the header in Row 1."""
-    try:
-        all_values = logs_ws.get_all_values()
-        num_rows = len(all_values)
+# --- GEMINI PATTERN ANALYZER ---
 
-        # If more than 1 row exists, we have data to delete
-        if num_rows > 1:
-            # We start at Row 2 to keep your Row 1 headers safe
-            logs_ws.delete_rows(2, num_rows)
-            return jsonify({"status": "success", "message": f"Cleared {num_rows - 1} entries. Row 1 header is safe."}), 200
-        else:
-            return jsonify({"status": "success", "message": "Logs are already empty."}), 200
+@app.route('/analyze_patterns', methods=['GET'])
+def analyze_patterns():
+    try:
+        # 1. Fetch recent data for the AI to study
+        logs = logs_ws.get_all_values()[-15:] # Last 15 entries
+        timetable = timetable_ws.get_all_values()
+        
+        # 2. The "Opal" AI Prompt
+        prompt = f"""
+        You are an elite productivity coach. 
+        User Timetable: {timetable}
+        Recent Activity Logs: {logs}
+        
+        Task: Find a bottleneck (e.g., user is always late starting Study after Gym).
+        Suggest ONE specific adjustment. 
+        
+        IMPORTANT: Return ONLY a raw JSON object with these keys:
+        {{
+            "title": "Short title of advice",
+            "message": "Detailed explanation of the pattern seen",
+            "action_target": "Exact name of activity to change",
+            "new_val": "Suggested new duration or time"
+        }}
+        """
+        
+        response = model.generate_content(prompt)
+        # Clean up the response text in case Gemini adds markdown backticks
+        json_data = response.text.replace('```json', '').replace('```', '').strip()
+        
+        return jsonify({"status": "success", "analysis": json.loads(json_data)}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/update_timetable', methods=['PATCH'])
+def update_timetable():
+    try:
+        data = request.json
+        activity = data.get('activity')
+        new_val = data.get('new_val')
+        
+        # Find the activity in the Timetable sheet and update the duration column
+        cell = timetable_ws.find(activity)
+        timetable_ws.update_cell(cell.row, cell.col + 1, new_val)
+        
+        return jsonify({"status": "success", "message": f"Updated {activity} successfully."}), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
