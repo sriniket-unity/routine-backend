@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Routine Flow | Productive Serenity</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@500;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        obsidian: '#000000',
+                        charcoal: '#121212',
+                        card: '#1E1E1E',
+                        sage: '#E8F5E9',
+                        slate: '#E1E8ED',
+                        debt: '#FF6B6B',
+                        accent: '#3B82F6'
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        display: ['Outfit', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #000000; color: #E5E7EB; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+        .glass-panel { background: rgba(30, 30, 30, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.05); }
+        .timer-glow { text-shadow: 0 0 30px rgba(255, 255, 255, 0.1); }
+        .active-tab { color: #FFFFFF; border-bottom: 2px solid #FFFFFF; }
+        .hidden-stats { max-height: 0; opacity: 0; transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1); overflow: hidden; }
+        .hidden-stats.visible { max-height: 200px; opacity: 1; padding-top: 1rem; }
+        .loading-overlay { background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); }
+    </style>
+</head>
+<body class="font-sans">
+
+    <header class="fixed top-0 left-0 right-0 z-50 glass-panel border-b border-white/5">
+        <div class="max-w-5xl mx-auto px-6 py-4 flex flex-col items-center">
+            <h1 class="font-display text-2xl font-800 tracking-tight text-white mb-4">ROUTINE<span class="text-white/40">FLOW</span></h1>
+            <nav class="flex space-x-8">
+                <button id="tab-dashboard" onclick="switchTab('dashboard')" class="pb-2 text-sm font-medium tracking-wide transition-all active-tab">DASHBOARD</button>
+                <button id="tab-insights" onclick="switchTab('insights')" class="pb-2 text-sm font-medium tracking-wide text-white/40 hover:text-white/80 transition-all">INSIGHTS</button>
+            </nav>
+        </div>
+    </header>
+
+    <main class="pt-36 pb-12 px-6 max-w-5xl mx-auto min-h-screen">
+        
+        <div id="timezone-banner" class="hidden mb-6 bg-debt/10 border border-debt/20 rounded-xl p-4 flex justify-between items-center">
+            <div class="flex items-center space-x-3 text-debt">
+                <span class="text-sm font-medium">Timezone Mismatch: Please sync to Asia/Kolkata</span>
+            </div>
+            <button onclick="this.parentElement.remove()" class="text-debt">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
+            </button>
+        </div>
+
+        <section id="view-dashboard" class="space-y-8">
+            <div class="flex flex-col items-center justify-center py-12 space-y-4">
+                <span id="current-activity" class="text-sage font-medium tracking-[0.2em] text-xs uppercase px-4 py-1.5 rounded-full border border-sage/20 bg-sage/5">WAKING UP...</span>
+                <div id="main-timer" class="font-mono text-8xl md:text-9xl font-700 tracking-tighter text-white timer-glow">00:00</div>
+                
+                <div class="flex flex-wrap justify-center gap-4 mt-8">
+                    <button id="btn-checkin" onclick="handleCheckIn()" class="px-10 py-4 bg-white text-black font-bold rounded-2xl hover:bg-white/90 active:scale-95 transition-all">CHECK-IN</button>
+                    <button id="btn-checkout" onclick="handleCheckOut()" class="px-10 py-4 bg-card text-white/90 border border-white/10 font-bold rounded-2xl hover:bg-white/5 active:scale-95 transition-all">CHECK-OUT</button>
+                </div>
+            </div>
+
+            <div id="stats-card" class="bg-card border border-white/5 rounded-3xl p-8 transition-all hover:border-white/10 group cursor-pointer" onclick="toggleStats()">
+                <div class="flex flex-col items-center text-center space-y-4">
+                    <div class="text-white/40 text-sm italic font-light tracking-wide max-w-md mx-auto" id="quote-display">
+                        "Discipline is the bridge between goals and accomplishment."
+                    </div>
+                    <div id="hidden-stats-content" class="hidden-stats flex flex-col items-center">
+                        <div class="text-debt text-4xl font-mono font-700" id="debt-value">00:00</div>
+                        <div class="text-[10px] text-debt/60 font-bold tracking-[0.3em] uppercase mt-1">Total Time Debt</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="view-insights" class="hidden">
+            <h2 class="text-white/40 text-xs font-bold tracking-[0.3em] uppercase mb-8 ml-2">AI Generated Strategy</h2>
+            <div id="insights-grid" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>
+        </section>
+    </main>
+
+    <div id="loading-state" class="fixed inset-0 z-[100] loading-overlay flex flex-col items-center justify-center p-6 text-center">
+        <div class="w-12 h-12 border-2 border-white/20 border-t-white rounded-full animate-spin mb-6"></div>
+        <h3 class="text-white font-display text-xl font-600 mb-2">Syncing Schedule</h3>
+        <p class="text-white/40 text-sm max-w-xs">Cloud server is waking up...<br>This may take ~30s for the cold start.</p>
+    </div>
+
+    <div id="toast-container" class="fixed bottom-8 right-8 flex flex-col gap-3 z-[110]"></div>
+
+    <script>
+        const BackendAPI = "https://routine-backend-aj3p.onrender.com";
+        const AppState = {
+            currentActivity: null,
+            totalDebtSeconds: 0,
+            timerSeconds: 0,
+            timerState: 'READY', // READY, COUNTDOWN, GRACE, DEBT
+            timerInterval: null,
+            graceMins: 3,
+            quotes: ["Discipline is the bridge between goals.", "Focus is a muscle. Train it.", "Productive serenity is the goal."]
+        };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            if (tz !== 'Asia/Kolkata') document.getElementById('timezone-banner').classList.remove('hidden');
+            fetchSchedule();
+        });
+
+        async function fetchSchedule() {
+            const loading = document.getElementById('loading-state');
+            loading.classList.remove('hidden');
+            try {
+                const response = await fetch(`${BackendAPI}/get_schedule`);
+                const result = await response.json();
+                if (result.status === "success" && result.data.length > 0) {
+                    const data = result.data[0];
+                    AppState.currentActivity = data;
+                    document.getElementById('current-activity').innerText = data.Activity;
+                    AppState.timerSeconds = (parseInt(data.Duration) || 45) * 60;
+                    if (data.Activity.toLowerCase().includes('gym')) AppState.graceMins = 10;
+                    else if (data.Activity.toLowerCase().includes('eat')) AppState.graceMins = 5;
+                    updateTimerDisplay();
+                    showToast('Schedule Connected', 'success');
+                }
+            } catch (e) {
+                showToast('Backend Error', 'error');
+            } finally {
+                loading.classList.add('hidden');
+            }
+        }
+
+        function handleCheckIn() {
+            if (AppState.timerState !== 'READY') return;
+            AppState.timerState = 'COUNTDOWN';
+            showToast('Session Live', 'success');
+            AppState.timerInterval = setInterval(() => {
+                AppState.timerSeconds--;
+                if (AppState.timerSeconds === 0 && AppState.timerState === 'COUNTDOWN') {
+                    AppState.timerState = 'GRACE';
+                    AppState.timerSeconds = -(AppState.graceMins * 60);
+                } else if (AppState.timerSeconds === 0 && AppState.timerState === 'GRACE') {
+                    AppState.timerState = 'DEBT';
+                }
+                if (AppState.timerState === 'DEBT') {
+                    AppState.totalDebtSeconds++;
+                    document.getElementById('debt-value').innerText = formatTime(AppState.totalDebtSeconds);
+                }
+                updateTimerDisplay();
+            }, 1000);
+        }
+
+        async function handleCheckOut() {
+            clearInterval(AppState.timerInterval);
+            const log = {
+                activity: AppState.currentActivity.Activity,
+                planned_duration: AppState.currentActivity.Duration,
+                actual_duration: Math.floor(((parseInt(AppState.currentActivity.Duration)*60) - AppState.timerSeconds)/60),
+                time_debt: Math.floor(AppState.totalDebtSeconds / 60)
+            };
+            try {
+                await fetch(`${BackendAPI}/log_session`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(log)
+                });
+                showToast('Logs Updated in Sheet', 'success');
+                location.reload();
+            } catch (e) { showToast('Sync Failed', 'error'); }
+        }
+
+        async function fetchInsights() {
+            const grid = document.getElementById('insights-grid');
+            grid.innerHTML = '<div class="col-span-full text-center text-white/20 animate-pulse">Analyzing Patterns...</div>';
+            try {
+                const response = await fetch(`${BackendAPI}/analyze_patterns`);
+                const result = await response.json();
+                if (result.status === "success") {
+                    const item = result.analysis;
+                    grid.innerHTML = `<div class="bg-card border border-white/5 p-6 rounded-3xl flex flex-col space-y-4">
+                        <h4 class="text-white font-bold">${item.title}</h4>
+                        <p class="text-white/60 text-sm">${item.message}</p>
+                        <button onclick="approveInsight('${item.action_target}', '${item.new_val}')" class="w-full py-3 bg-white text-black rounded-xl font-bold text-xs uppercase">Approve & Sync</button>
+                    </div>`;
+                }
+            } catch (e) { grid.innerHTML = '<p class="col-span-full text-center text-white/20">Log more data for AI insights.</p>'; }
+        }
+
+        async function approveInsight(activity, newVal) {
+            try {
+                await fetch(`${BackendAPI}/update_timetable`, {
+                    method: 'PATCH',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ activity, new_val: newVal })
+                });
+                showToast('Schedule Adjusted', 'success');
+                fetchSchedule();
+            } catch (e) { showToast('Update Error', 'error'); }
+        }
+
+        function switchTab(view) {
+            document.getElementById('view-dashboard').classList.toggle('hidden', view !== 'dashboard');
+            document.getElementById('view-insights').classList.toggle('hidden', view !== 'insights');
+            document.getElementById('tab-dashboard').classList.toggle('active-tab', view === 'dashboard');
+            document.getElementById('tab-insights').classList.toggle('active-tab', view === 'insights');
+            if (view === 'insights') fetchInsights();
+        }
+
+        function updateTimerDisplay() {
+            const abs = Math.abs(AppState.timerSeconds);
+            const m = Math.floor(abs/60).toString().padStart(2,'0');
+            const s = (abs%60).toString().padStart(2,'0');
+            const el = document.getElementById('main-timer');
+            el.innerText = `${m}:${s}`;
+            el.classList.toggle('text-debt', AppState.timerState === 'DEBT');
+        }
+
+        function formatTime(s) { return `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`; }
+        function toggleStats() { document.getElementById('hidden-stats-content').classList.toggle('visible'); }
+        function showToast(m, t) {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            const colors = { success: 'border-sage/20 bg-[#0A100A] text-sage', error: 'border-debt/20 bg-[#100A0A] text-debt', info: 'border-white/10 bg-card text-white/80' };
+            toast.className = `px-6 py-4 rounded-2xl border ${colors[t]} text-sm font-semibold shadow-2xl animate-in slide-in-from-right-12 duration-300`;
+            toast.innerText = m;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 4000);
+        }
+    </script>
+</body>
+</html>
