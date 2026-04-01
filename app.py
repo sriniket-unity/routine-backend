@@ -12,10 +12,11 @@ try:
     client = gspread.service_account(filename='credentials.json')
     sheet = client.open("overall_db")
     
+    # Selecting your tabs
     timetable_ws = sheet.worksheet("Timetable")
     logs_ws = sheet.worksheet("Logs")
     
-    print("✅ Backend Live: Protecting Row 1 headers.")
+    print("✅ Backend Live: Protecting Row 1 headers only.")
 except Exception as e:
     print(f"❌ Error: {e}")
 
@@ -25,10 +26,11 @@ def home():
 
 @app.route('/get_schedule', methods=['GET'])
 def get_schedule():
+    """Reads the master timetable."""
     try:
-        # head=2 is still correct if your Timetable sheet has a title in Row 1
-        # If your Timetable headers are also in Row 1, change head=2 to head=1
-        records = timetable_ws.get_all_records(head=2)
+        # Note: head=1 assumes your Timetable headers are also in Row 1.
+        # If your Timetable has a title in Row 1, keep this as head=2.
+        records = timetable_ws.get_all_records(head=1)
         clean_records = [{k: v for k, v in record.items() if k != ''} for record in records]
         return jsonify({"status": "success", "data": clean_records}), 200
     except Exception as e:
@@ -36,6 +38,7 @@ def get_schedule():
 
 @app.route('/log_session', methods=['POST'])
 def log_session():
+    """Appends a new study session to the Logs tab."""
     try:
         data = request.json
         row = [
@@ -52,15 +55,16 @@ def log_session():
 
 @app.route('/clear_logs', methods=['DELETE'])
 def clear_logs():
-    """Deletes everything below the first row."""
+    """Wipes everything except the header in Row 1."""
     try:
         all_values = logs_ws.get_all_values()
         num_rows = len(all_values)
 
+        # If more than 1 row exists, we have data to delete
         if num_rows > 1:
             # We start at Row 2 to keep your Row 1 headers safe
             logs_ws.delete_rows(2, num_rows)
-            return jsonify({"status": "success", "message": f"Cleared {num_rows - 1} entries. Headers are safe."}), 200
+            return jsonify({"status": "success", "message": f"Cleared {num_rows - 1} entries. Row 1 header is safe."}), 200
         else:
             return jsonify({"status": "success", "message": "Logs are already empty."}), 200
     except Exception as e:
