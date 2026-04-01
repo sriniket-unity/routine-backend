@@ -9,14 +9,9 @@ CORS(app)
 
 # --- GOOGLE SHEETS SETUP ---
 try:
-    # Connects using your credentials.json
-    # Note: On Render, this file will be provided via the "Secret Files" setting
     client = gspread.service_account(filename='credentials.json')
-    
-    # Opens your sheet named "overall_db"
     sheet = client.open("overall_db")
     
-    # Connects to your specific tabs (matches your screenshots exactly)
     timetable_ws = sheet.worksheet("Timetable")
     logs_ws = sheet.worksheet("Logs")
     
@@ -30,14 +25,10 @@ def home():
 
 @app.route('/get_schedule', methods=['GET'])
 def get_schedule():
-    """Reads the master timetable and sends it to your web app."""
+    """Reads the master timetable and sends it to your app."""
     try:
-        # head=2 tells Python your actual headers (Day, Time, Activity) are on Row 2
         records = timetable_ws.get_all_records(head=2)
-        
-        # Removes any empty columns to prevent "duplicate header" errors
         clean_records = [{k: v for k, v in record.items() if k != ''} for record in records]
-        
         return jsonify({"status": "success", "data": clean_records}), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -47,7 +38,6 @@ def log_session():
     """Receives checkout data and appends it to the Logs tab."""
     try:
         data = request.json
-        # Prep the row: Date/Time, Activity, Planned, Actual, Debt
         row = [
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             data.get('activity', 'Unknown'),
@@ -60,9 +50,25 @@ def log_session():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@app.route('/clear_logs', methods=['DELETE'])
+def clear_logs():
+    """Deletes all entries in the Logs tab except the header row."""
+    try:
+        # Get all current data to see how many rows we have
+        all_values = logs_ws.get_all_values()
+        num_rows = len(all_values)
+
+        if num_rows > 1:
+            # delete_rows(start_index, end_index)
+            # We start at 2 to keep the headers in Row 1
+            logs_ws.delete_rows(2, num_rows)
+            return jsonify({"status": "success", "message": f"Cleared {num_rows - 1} log entries."}), 200
+        else:
+            return jsonify({"status": "success", "message": "Logs are already empty."}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 # --- RUN THE SERVER ---
 if __name__ == '__main__':
-    # Render assigns a dynamic port, so we grab it from environment variables
-    # We use host='0.0.0.0' to allow the server to accept external requests
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
