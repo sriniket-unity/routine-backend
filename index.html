@@ -13,20 +13,8 @@
             darkMode: 'class',
             theme: {
                 extend: {
-                    colors: {
-                        obsidian: '#000000',
-                        charcoal: '#121212',
-                        card: '#1E1E1E',
-                        sage: '#E8F5E9',
-                        slate: '#E1E8ED',
-                        debt: '#FF6B6B',
-                        accent: '#3B82F6'
-                    },
-                    fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
-                        display: ['Outfit', 'sans-serif'],
-                        mono: ['JetBrains Mono', 'monospace'],
-                    }
+                    colors: { obsidian: '#000000', charcoal: '#121212', card: '#1E1E1E', sage: '#E8F5E9', debt: '#FF6B6B' },
+                    fontFamily: { sans: ['Inter', 'sans-serif'], display: ['Outfit', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] }
                 }
             }
         }
@@ -34,11 +22,9 @@
     <style>
         body { background-color: #000000; color: #E5E7EB; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
         .glass-panel { background: rgba(30, 30, 30, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.05); }
-        .timer-glow { text-shadow: 0 0 30px rgba(255, 255, 255, 0.1); }
+        .timer-glow { text-shadow: 0 0 40px rgba(255, 255, 255, 0.1); }
         .active-tab { color: #FFFFFF; border-bottom: 2px solid #FFFFFF; }
-        .hidden-stats { max-height: 0; opacity: 0; transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1); overflow: hidden; }
-        .hidden-stats.visible { max-height: 200px; opacity: 1; padding-top: 1rem; }
-        .loading-overlay { background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); }
+        .loading-overlay { background: rgba(0,0,0,0.9); backdrop-filter: blur(10px); }
     </style>
 </head>
 <body class="font-sans">
@@ -47,43 +33,54 @@
         <div class="max-w-5xl mx-auto px-6 py-4 flex flex-col items-center">
             <h1 class="font-display text-2xl font-800 tracking-tight text-white mb-4">ROUTINE<span class="text-white/40">FLOW</span></h1>
             <nav class="flex space-x-8">
-                <button id="tab-dashboard" onclick="switchTab('dashboard')" class="pb-2 text-sm font-medium tracking-wide transition-all active-tab">DASHBOARD</button>
-                <button id="tab-insights" onclick="switchTab('insights')" class="pb-2 text-sm font-medium tracking-wide text-white/40 hover:text-white/80 transition-all">INSIGHTS</button>
+                <button id="tab-dashboard" onclick="switchTab('dashboard')" class="pb-2 text-sm font-medium tracking-wide active-tab">DASHBOARD</button>
+                <button id="tab-insights" onclick="switchTab('insights')" class="pb-2 text-sm font-medium tracking-wide text-white/40">INSIGHTS</button>
             </nav>
         </div>
     </header>
 
     <main class="pt-36 pb-12 px-6 max-w-5xl mx-auto min-h-screen">
         
-        <div id="timezone-banner" class="hidden mb-6 bg-debt/10 border border-debt/20 rounded-xl p-4 flex justify-between items-center">
+        <div id="timezone-banner" class="hidden mb-12 bg-debt/10 border border-debt/20 rounded-2xl p-4 flex justify-between items-center animate-in fade-in zoom-in duration-500">
             <div class="flex items-center space-x-3 text-debt">
-                <span class="text-sm font-medium">Timezone Warning: System is optimized for Asia/Kolkata</span>
+                <span class="text-xs font-bold tracking-widest uppercase">Timezone Warning: System is optimized for Asia/Kolkata</span>
             </div>
-            <button onclick="this.parentElement.remove()" class="text-debt">
+            <button onclick="this.parentElement.remove()" class="text-debt opacity-50 hover:opacity-100 transition-opacity">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
             </button>
         </div>
 
-        <section id="view-dashboard" class="space-y-8">
-            <div class="flex flex-col items-center justify-center py-12 space-y-4">
-                <span id="current-activity" class="text-sage font-medium tracking-[0.2em] text-xs uppercase px-4 py-1.5 rounded-full border border-sage/20 bg-sage/5">WAKING UP...</span>
-                <div id="main-timer" class="font-mono text-8xl md:text-9xl font-700 tracking-tighter text-white timer-glow">00:00</div>
+        <section id="view-dashboard" class="space-y-16">
+            <div class="flex flex-col items-center space-y-8">
                 
-                <div class="flex flex-wrap justify-center gap-4 mt-8">
-                    <button id="btn-checkin" onclick="handleCheckIn()" class="px-10 py-4 bg-white text-black font-bold rounded-2xl hover:bg-white/90 active:scale-95 transition-all">CHECK-IN</button>
-                    <button id="btn-checkout" onclick="handleCheckOut()" class="px-10 py-4 bg-card text-white/90 border border-white/10 font-bold rounded-2xl hover:bg-white/5 active:scale-95 transition-all">CHECK-OUT</button>
+                <div class="flex items-center justify-center space-x-6 text-[10px] font-bold tracking-[0.3em] uppercase text-white/20 w-full max-w-md">
+                    <span id="prev-activity" class="truncate text-right w-1/3">PREV</span>
+                    <span class="w-12 h-[1px] bg-white/10 shrink-0"></span>
+                    <span class="text-white/60 shrink-0">CURRENT</span>
+                    <span class="w-12 h-[1px] bg-white/10 shrink-0"></span>
+                    <span id="next-activity" class="truncate text-left w-1/3">NEXT</span>
+                </div>
+
+                <div class="flex flex-col items-center space-y-3">
+                    <span id="current-activity" class="text-sage font-display text-sm font-bold tracking-[0.15em] uppercase px-8 py-2.5 rounded-full border border-sage/20 bg-sage/5 shadow-[0_0_20px_rgba(232,245,233,0.05)]">WAKING UP...</span>
+                    <span id="activity-duration" class="text-white/30 text-[10px] font-mono tracking-[0.2em] uppercase">Target Duration: --</span>
+                </div>
+
+                <div id="main-timer" class="font-mono text-7xl md:text-8xl font-700 tracking-tighter text-white timer-glow">00h:00m:00s</div>
+                
+                <div class="flex gap-6 mt-4">
+                    <button id="btn-checkin" onclick="handleCheckIn()" class="px-12 py-4 bg-white text-black font-bold rounded-2xl hover:bg-white/90 active:scale-95 transition-all shadow-xl shadow-white/5">CHECK-IN</button>
+                    <button id="btn-checkout" onclick="handleCheckOut()" class="px-12 py-4 bg-card text-white/90 border border-white/10 font-bold rounded-2xl hover:bg-white/5 active:scale-95 transition-all">CHECK-OUT</button>
                 </div>
             </div>
 
-            <div id="stats-card" class="bg-card border border-white/5 rounded-3xl p-8 transition-all hover:border-white/10 group cursor-pointer" onclick="toggleStats()">
-                <div class="flex flex-col items-center text-center space-y-4">
-                    <div class="text-white/40 text-sm italic font-light tracking-wide max-w-md mx-auto" id="quote-display">
-                        "Productive serenity is the ultimate goal."
-                    </div>
-                    <div id="hidden-stats-content" class="hidden-stats flex flex-col items-center">
-                        <div class="text-debt text-4xl font-mono font-700" id="debt-value">00:00</div>
-                        <div class="text-[10px] text-debt/60 font-bold tracking-[0.3em] uppercase mt-1">Total Time Debt</div>
-                    </div>
+            <div class="max-w-md mx-auto bg-card/50 border border-white/5 rounded-3xl p-10 text-center space-y-6">
+                <p class="text-white/40 text-sm font-light italic leading-relaxed" id="quote-display">
+                    "Productive serenity is the ultimate goal."
+                </p>
+                <div id="debt-container" class="pt-6 border-t border-white/5 hidden">
+                    <div class="text-debt text-3xl font-mono font-700" id="debt-value">00h:00m:00s</div>
+                    <div class="text-[9px] text-debt/40 font-bold tracking-[0.4em] uppercase mt-2">Current Session Debt</div>
                 </div>
             </div>
         </section>
@@ -94,175 +91,142 @@
         </section>
     </main>
 
-    <div id="loading-state" class="fixed inset-0 z-[100] loading-overlay flex flex-col items-center justify-center p-6 text-center">
+    <div id="loading-state" class="fixed inset-0 z-[100] loading-overlay flex flex-col items-center justify-center p-6">
         <div class="w-12 h-12 border-2 border-white/20 border-t-white rounded-full animate-spin mb-6"></div>
-        <h3 class="text-white font-display text-xl font-600 mb-2">Syncing Schedule</h3>
-        <p class="text-white/40 text-sm max-w-xs">Connecting to Sriniket's Cloud...<br>This may take ~30s if the server was sleeping.</p>
+        <p class="text-white/40 text-[10px] font-bold tracking-[0.3em] uppercase">Syncing Cloud Database</p>
     </div>
 
     <div id="toast-container" class="fixed bottom-8 right-8 flex flex-col gap-3 z-[110]"></div>
 
     <script>
-        // --- ⚙️ CONFIGURATION ---
         const BackendAPI = "https://routine-backend-7yn2.onrender.com";
-        
-        const AppState = {
-            currentActivity: null,
-            totalDebtSeconds: 0,
-            timerSeconds: 0,
-            timerState: 'READY', // READY, COUNTDOWN, GRACE, DEBT
-            timerInterval: null,
-            graceMins: 5
-        };
+        const AppState = { currentActivity: null, timerSeconds: 0, timerState: 'READY', timerInterval: null };
 
-        // --- 🚀 INITIALIZATION ---
         document.addEventListener('DOMContentLoaded', () => {
+            // Dismiss timezone warning logic
             const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-            if (tz !== 'Asia/Kolkata') document.getElementById('timezone-banner').classList.remove('hidden');
+            if (!tz.includes('Kolkata') && !tz.includes('Calcutta')) {
+                document.getElementById('timezone-banner').classList.remove('hidden');
+            }
             fetchSchedule();
         });
 
-        // --- ⏰ TIME PARSING LOGIC (For QA matching) ---
         function parseTimeToMinutes(timeStr) {
             if (!timeStr) return 0;
-            try {
-                const [time, modifier] = timeStr.trim().split(' ');
-                let [hours, minutes] = time.split(':');
-                hours = parseInt(hours, 10);
-                if (hours === 12) hours = 0;
-                let totalMinutes = hours * 60 + parseInt(minutes, 10);
-                if (modifier === 'PM') totalMinutes += 720;
-                return totalMinutes;
-            } catch(e) { return 0; }
+            const [time, modifier] = timeStr.trim().split(' ');
+            let [hours, minutes] = time.split(':');
+            hours = parseInt(hours, 10);
+            if (hours === 12) hours = 0;
+            let total = hours * 60 + parseInt(minutes, 10);
+            return modifier === 'PM' ? total + 720 : total;
         }
 
         async function fetchSchedule() {
-            const loading = document.getElementById('loading-state');
-            loading.classList.remove('hidden');
+            document.getElementById('loading-state').classList.remove('hidden');
             try {
                 const response = await fetch(`${BackendAPI}/get_schedule`);
                 const result = await response.json();
                 
                 if (result.status === "success" && result.data.length > 0) {
-                    // Logic to find the CURRENT activity based on IST time
                     const now = new Date();
-                    const currentTimeStr = now.toLocaleTimeString('en-US', { 
-                        hour12: true, hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' 
-                    });
+                    const currentTimeStr = now.toLocaleTimeString('en-US', { hour12: true, hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' });
                     const currentMinutes = parseTimeToMinutes(currentTimeStr);
 
-                    let matchedActivity = result.data.find(item => {
+                    let matchedIndex = result.data.findIndex(item => {
                         if (!item.Time || !item.Time.includes('-')) return false;
-                        const [startStr, endStr] = item.Time.split('-');
-                        const start = parseTimeToMinutes(startStr);
-                        const end = parseTimeToMinutes(endStr);
-
-                        // Handle overnight schedules (e.g. Sleep 10:30 PM - 06:00 AM)
-                        if (end < start) return currentMinutes >= start || currentMinutes <= end;
-                        return currentMinutes >= start && currentMinutes <= end;
+                        const [start, end] = item.Time.split('-').map(parseTimeToMinutes);
+                        return end < start ? (currentMinutes >= start || currentMinutes <= end) : (currentMinutes >= start && currentMinutes <= end);
                     });
 
-                    const data = matchedActivity || result.data[0];
+                    if (matchedIndex === -1) matchedIndex = 0;
+
+                    const data = result.data[matchedIndex];
+                    const prev = result.data[matchedIndex - 1] || result.data[result.data.length - 1];
+                    const next = result.data[matchedIndex + 1] || result.data[0];
+
                     AppState.currentActivity = data;
                     document.getElementById('current-activity').innerText = data.Activity;
+                    document.getElementById('activity-duration').innerText = `Target Duration: ${data.Duration}`;
+                    document.getElementById('prev-activity').innerText = prev.Activity;
+                    document.getElementById('next-activity').innerText = next.Activity;
                     
-                    // Convert Duration string (e.g. "1.5 hrs") to seconds
-                    const durationHours = parseFloat(data.Duration) || 1;
-                    AppState.timerSeconds = Math.floor(durationHours * 3600);
-                    
+                    // Convert Duration (e.g. "7.5 hrs") to total seconds
+                    const durVal = parseFloat(data.Duration) || 1;
+                    AppState.timerSeconds = Math.floor(durVal * 3600);
                     updateTimerDisplay();
-                    showToast('Cloud Synced', 'success');
                 }
-            } catch (e) {
-                showToast('Backend Sleeping or Offline', 'error');
-            } finally {
-                loading.classList.add('hidden');
-            }
+            } catch (e) { showToast('Cloud Sync Failed', 'error'); }
+            finally { document.getElementById('loading-state').classList.add('hidden'); }
         }
 
-        // --- ⏳ TIMER ENGINE ---
         function handleCheckIn() {
             if (AppState.timerState !== 'READY') return;
-            AppState.timerState = 'COUNTDOWN';
-            showToast('Session Active', 'success');
-            
+            AppState.timerState = 'RUNNING';
+            document.getElementById('debt-container').classList.remove('hidden');
             AppState.timerInterval = setInterval(() => {
                 AppState.timerSeconds--;
-                
-                if (AppState.timerSeconds === 0 && AppState.timerState === 'COUNTDOWN') {
-                    AppState.timerState = 'GRACE';
-                    AppState.timerSeconds = -(AppState.graceMins * 60);
-                } else if (AppState.timerSeconds === 0 && AppState.timerState === 'GRACE') {
-                    AppState.timerState = 'DEBT';
-                }
-                
-                if (AppState.timerState === 'DEBT') {
-                    AppState.totalDebtSeconds++;
-                    document.getElementById('debt-value').innerText = formatTime(AppState.totalDebtSeconds);
-                }
                 updateTimerDisplay();
             }, 1000);
+            showToast('Session Live', 'success');
         }
 
         async function handleCheckOut() {
             clearInterval(AppState.timerInterval);
             const plannedSecs = (parseFloat(AppState.currentActivity.Duration) || 1) * 3600;
             const actualDurationMins = Math.max(0, Math.floor((plannedSecs - AppState.timerSeconds) / 60));
-
+            
             const log = {
                 activity: AppState.currentActivity.Activity,
                 planned_duration: AppState.currentActivity.Duration,
-                actual_duration: actualDurationMins,
-                time_debt: Math.floor(AppState.totalDebtSeconds / 60)
+                actual_duration: actualDurationMins
             };
-            
-            try {
-                await fetch(`${BackendAPI}/log_session`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(log)
-                });
-                showToast('Google Sheet Updated', 'success');
-                setTimeout(() => location.reload(), 1500);
-            } catch (e) { showToast('Logging Failed', 'error'); }
+
+            await fetch(`${BackendAPI}/log_session`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(log)
+            });
+            location.reload();
         }
 
-        // --- 📊 UI HELPERS ---
+        // --- ⏰ THE 00h:00m:00s CLOCK ENGINE ---
+        function updateTimerDisplay() {
+            const absSeconds = Math.abs(AppState.timerSeconds);
+            const h = Math.floor(absSeconds / 3600).toString().padStart(2, '0');
+            const m = Math.floor((absSeconds % 3600) / 60).toString().padStart(2, '0');
+            const s = (absSeconds % 60).toString().padStart(2, '0');
+            
+            const display = `${h}h:${m}m:${s}s`;
+            const el = document.getElementById('main-timer');
+            el.innerText = display;
+            
+            // If timer goes below zero, turn text red to indicate debt
+            el.classList.toggle('text-debt', AppState.timerSeconds < 0);
+            if (AppState.timerSeconds < 0) {
+                document.getElementById('debt-value').innerText = display;
+            }
+        }
+
         function switchTab(view) {
             document.getElementById('view-dashboard').classList.toggle('hidden', view !== 'dashboard');
             document.getElementById('view-insights').classList.toggle('hidden', view !== 'insights');
             document.getElementById('tab-dashboard').classList.toggle('active-tab', view === 'dashboard');
             document.getElementById('tab-insights').classList.toggle('active-tab', view === 'insights');
+            if (view === 'insights') fetchInsights();
         }
 
-        function updateTimerDisplay() {
-            const abs = Math.abs(AppState.timerSeconds);
-            const m = Math.floor(abs/60).toString().padStart(2,'0');
-            const s = (abs%60).toString().padStart(2,'0');
-            const el = document.getElementById('main-timer');
-            el.innerText = `${m}:${s}`;
-            el.classList.toggle('text-debt', AppState.timerState === 'DEBT');
-        }
-
-        function formatTime(s) { 
-            return `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`; 
-        }
-
-        function toggleStats() { 
-            document.getElementById('hidden-stats-content').classList.toggle('visible'); 
+        async function fetchInsights() {
+            const grid = document.getElementById('insights-grid');
+            grid.innerHTML = '<p class="text-white/20 text-center col-span-full italic">Log 3-5 sessions to unlock AI strategies...</p>';
         }
 
         function showToast(m, t) {
             const container = document.getElementById('toast-container');
             const toast = document.createElement('div');
-            const colors = { 
-                success: 'border-white/10 bg-card text-white', 
-                error: 'border-debt/20 bg-[#100A0A] text-debt' 
-            };
-            toast.className = `px-6 py-4 rounded-2xl border ${colors[t]} text-sm font-semibold shadow-2xl animate-in slide-in-from-right-12 duration-300`;
+            toast.className = `px-6 py-4 rounded-2xl glass-panel border border-white/10 text-xs font-bold uppercase tracking-widest shadow-2xl animate-in slide-in-from-right-8`;
             toast.innerText = m;
             container.appendChild(toast);
-            setTimeout(() => toast.remove(), 4000);
+            setTimeout(() => toast.remove(), 3000);
         }
     </script>
 </body>
