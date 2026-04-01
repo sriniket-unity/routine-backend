@@ -57,7 +57,7 @@
         
         <div id="timezone-banner" class="hidden mb-6 bg-debt/10 border border-debt/20 rounded-xl p-4 flex justify-between items-center">
             <div class="flex items-center space-x-3 text-debt">
-                <span class="text-sm font-medium">Timezone Mismatch: Please sync to Asia/Kolkata</span>
+                <span class="text-sm font-medium">Timezone Warning: System is optimized for Asia/Kolkata</span>
             </div>
             <button onclick="this.parentElement.remove()" class="text-debt">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
@@ -78,7 +78,7 @@
             <div id="stats-card" class="bg-card border border-white/5 rounded-3xl p-8 transition-all hover:border-white/10 group cursor-pointer" onclick="toggleStats()">
                 <div class="flex flex-col items-center text-center space-y-4">
                     <div class="text-white/40 text-sm italic font-light tracking-wide max-w-md mx-auto" id="quote-display">
-                        "Discipline is the bridge between goals and accomplishment."
+                        "Productive serenity is the ultimate goal."
                     </div>
                     <div id="hidden-stats-content" class="hidden-stats flex flex-col items-center">
                         <div class="text-debt text-4xl font-mono font-700" id="debt-value">00:00</div>
@@ -89,7 +89,7 @@
         </section>
 
         <section id="view-insights" class="hidden">
-            <h2 class="text-white/40 text-xs font-bold tracking-[0.3em] uppercase mb-8 ml-2">AI Generated Strategy</h2>
+            <h2 class="text-white/40 text-xs font-bold tracking-[0.3em] uppercase mb-8 ml-2">AI Strategy</h2>
             <div id="insights-grid" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>
         </section>
     </main>
@@ -97,28 +97,44 @@
     <div id="loading-state" class="fixed inset-0 z-[100] loading-overlay flex flex-col items-center justify-center p-6 text-center">
         <div class="w-12 h-12 border-2 border-white/20 border-t-white rounded-full animate-spin mb-6"></div>
         <h3 class="text-white font-display text-xl font-600 mb-2">Syncing Schedule</h3>
-        <p class="text-white/40 text-sm max-w-xs">Cloud server is waking up...<br>This may take ~30s for the cold start.</p>
+        <p class="text-white/40 text-sm max-w-xs">Connecting to Sriniket's Cloud...<br>This may take ~30s if the server was sleeping.</p>
     </div>
 
     <div id="toast-container" class="fixed bottom-8 right-8 flex flex-col gap-3 z-[110]"></div>
 
     <script>
-        const BackendAPI = "https://routine-backend-aj3p.onrender.com";
+        // --- ⚙️ CONFIGURATION ---
+        const BackendAPI = "https://routine-backend-7yn2.onrender.com";
+        
         const AppState = {
             currentActivity: null,
             totalDebtSeconds: 0,
             timerSeconds: 0,
             timerState: 'READY', // READY, COUNTDOWN, GRACE, DEBT
             timerInterval: null,
-            graceMins: 3,
-            quotes: ["Discipline is the bridge between goals.", "Focus is a muscle. Train it.", "Productive serenity is the goal."]
+            graceMins: 5
         };
 
+        // --- 🚀 INITIALIZATION ---
         document.addEventListener('DOMContentLoaded', () => {
             const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
             if (tz !== 'Asia/Kolkata') document.getElementById('timezone-banner').classList.remove('hidden');
             fetchSchedule();
         });
+
+        // --- ⏰ TIME PARSING LOGIC (For QA matching) ---
+        function parseTimeToMinutes(timeStr) {
+            if (!timeStr) return 0;
+            try {
+                const [time, modifier] = timeStr.trim().split(' ');
+                let [hours, minutes] = time.split(':');
+                hours = parseInt(hours, 10);
+                if (hours === 12) hours = 0;
+                let totalMinutes = hours * 60 + parseInt(minutes, 10);
+                if (modifier === 'PM') totalMinutes += 720;
+                return totalMinutes;
+            } catch(e) { return 0; }
+        }
 
         async function fetchSchedule() {
             const loading = document.getElementById('loading-state');
@@ -126,35 +142,60 @@
             try {
                 const response = await fetch(`${BackendAPI}/get_schedule`);
                 const result = await response.json();
+                
                 if (result.status === "success" && result.data.length > 0) {
-                    const data = result.data[0];
+                    // Logic to find the CURRENT activity based on IST time
+                    const now = new Date();
+                    const currentTimeStr = now.toLocaleTimeString('en-US', { 
+                        hour12: true, hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' 
+                    });
+                    const currentMinutes = parseTimeToMinutes(currentTimeStr);
+
+                    let matchedActivity = result.data.find(item => {
+                        if (!item.Time || !item.Time.includes('-')) return false;
+                        const [startStr, endStr] = item.Time.split('-');
+                        const start = parseTimeToMinutes(startStr);
+                        const end = parseTimeToMinutes(endStr);
+
+                        // Handle overnight schedules (e.g. Sleep 10:30 PM - 06:00 AM)
+                        if (end < start) return currentMinutes >= start || currentMinutes <= end;
+                        return currentMinutes >= start && currentMinutes <= end;
+                    });
+
+                    const data = matchedActivity || result.data[0];
                     AppState.currentActivity = data;
                     document.getElementById('current-activity').innerText = data.Activity;
-                    AppState.timerSeconds = (parseInt(data.Duration) || 45) * 60;
-                    if (data.Activity.toLowerCase().includes('gym')) AppState.graceMins = 10;
-                    else if (data.Activity.toLowerCase().includes('eat')) AppState.graceMins = 5;
+                    
+                    // Convert Duration string (e.g. "1.5 hrs") to seconds
+                    const durationHours = parseFloat(data.Duration) || 1;
+                    AppState.timerSeconds = Math.floor(durationHours * 3600);
+                    
                     updateTimerDisplay();
-                    showToast('Schedule Connected', 'success');
+                    showToast('Cloud Synced', 'success');
                 }
             } catch (e) {
-                showToast('Backend Error', 'error');
+                showToast('Backend Sleeping or Offline', 'error');
             } finally {
                 loading.classList.add('hidden');
             }
         }
 
+        // --- ⏳ TIMER ENGINE ---
         function handleCheckIn() {
             if (AppState.timerState !== 'READY') return;
             AppState.timerState = 'COUNTDOWN';
-            showToast('Session Live', 'success');
+            showToast('Session Active', 'success');
+            
             AppState.timerInterval = setInterval(() => {
                 AppState.timerSeconds--;
+                
                 if (AppState.timerSeconds === 0 && AppState.timerState === 'COUNTDOWN') {
                     AppState.timerState = 'GRACE';
                     AppState.timerSeconds = -(AppState.graceMins * 60);
                 } else if (AppState.timerSeconds === 0 && AppState.timerState === 'GRACE') {
                     AppState.timerState = 'DEBT';
                 }
+                
                 if (AppState.timerState === 'DEBT') {
                     AppState.totalDebtSeconds++;
                     document.getElementById('debt-value').innerText = formatTime(AppState.totalDebtSeconds);
@@ -165,58 +206,33 @@
 
         async function handleCheckOut() {
             clearInterval(AppState.timerInterval);
+            const plannedSecs = (parseFloat(AppState.currentActivity.Duration) || 1) * 3600;
+            const actualDurationMins = Math.max(0, Math.floor((plannedSecs - AppState.timerSeconds) / 60));
+
             const log = {
                 activity: AppState.currentActivity.Activity,
                 planned_duration: AppState.currentActivity.Duration,
-                actual_duration: Math.floor(((parseInt(AppState.currentActivity.Duration)*60) - AppState.timerSeconds)/60),
+                actual_duration: actualDurationMins,
                 time_debt: Math.floor(AppState.totalDebtSeconds / 60)
             };
+            
             try {
                 await fetch(`${BackendAPI}/log_session`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify(log)
                 });
-                showToast('Logs Updated in Sheet', 'success');
-                location.reload();
-            } catch (e) { showToast('Sync Failed', 'error'); }
+                showToast('Google Sheet Updated', 'success');
+                setTimeout(() => location.reload(), 1500);
+            } catch (e) { showToast('Logging Failed', 'error'); }
         }
 
-        async function fetchInsights() {
-            const grid = document.getElementById('insights-grid');
-            grid.innerHTML = '<div class="col-span-full text-center text-white/20 animate-pulse">Analyzing Patterns...</div>';
-            try {
-                const response = await fetch(`${BackendAPI}/analyze_patterns`);
-                const result = await response.json();
-                if (result.status === "success") {
-                    const item = result.analysis;
-                    grid.innerHTML = `<div class="bg-card border border-white/5 p-6 rounded-3xl flex flex-col space-y-4">
-                        <h4 class="text-white font-bold">${item.title}</h4>
-                        <p class="text-white/60 text-sm">${item.message}</p>
-                        <button onclick="approveInsight('${item.action_target}', '${item.new_val}')" class="w-full py-3 bg-white text-black rounded-xl font-bold text-xs uppercase">Approve & Sync</button>
-                    </div>`;
-                }
-            } catch (e) { grid.innerHTML = '<p class="col-span-full text-center text-white/20">Log more data for AI insights.</p>'; }
-        }
-
-        async function approveInsight(activity, newVal) {
-            try {
-                await fetch(`${BackendAPI}/update_timetable`, {
-                    method: 'PATCH',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ activity, new_val: newVal })
-                });
-                showToast('Schedule Adjusted', 'success');
-                fetchSchedule();
-            } catch (e) { showToast('Update Error', 'error'); }
-        }
-
+        // --- 📊 UI HELPERS ---
         function switchTab(view) {
             document.getElementById('view-dashboard').classList.toggle('hidden', view !== 'dashboard');
             document.getElementById('view-insights').classList.toggle('hidden', view !== 'insights');
             document.getElementById('tab-dashboard').classList.toggle('active-tab', view === 'dashboard');
             document.getElementById('tab-insights').classList.toggle('active-tab', view === 'insights');
-            if (view === 'insights') fetchInsights();
         }
 
         function updateTimerDisplay() {
@@ -228,12 +244,21 @@
             el.classList.toggle('text-debt', AppState.timerState === 'DEBT');
         }
 
-        function formatTime(s) { return `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`; }
-        function toggleStats() { document.getElementById('hidden-stats-content').classList.toggle('visible'); }
+        function formatTime(s) { 
+            return `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`; 
+        }
+
+        function toggleStats() { 
+            document.getElementById('hidden-stats-content').classList.toggle('visible'); 
+        }
+
         function showToast(m, t) {
             const container = document.getElementById('toast-container');
             const toast = document.createElement('div');
-            const colors = { success: 'border-sage/20 bg-[#0A100A] text-sage', error: 'border-debt/20 bg-[#100A0A] text-debt', info: 'border-white/10 bg-card text-white/80' };
+            const colors = { 
+                success: 'border-white/10 bg-card text-white', 
+                error: 'border-debt/20 bg-[#100A0A] text-debt' 
+            };
             toast.className = `px-6 py-4 rounded-2xl border ${colors[t]} text-sm font-semibold shadow-2xl animate-in slide-in-from-right-12 duration-300`;
             toast.innerText = m;
             container.appendChild(toast);
@@ -241,4 +266,4 @@
         }
     </script>
 </body>
-</html> 
+</html>
