@@ -9,34 +9,61 @@ import google.generativeai as genai
 import json
 
 app = Flask(__name__)
+# IMPORTANT: This allows your GitHub Pages site to talk to this Render backend
 CORS(app)
 
-# --- 🧠 AI SETUP (Gemini 3 Flash Preview) ---
-# Powered by the latest 2026 architecture
+# --- 🧠 AI SETUP ---
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 model = genai.GenerativeModel('gemini-3-flash-preview')
 
 # --- 📊 GOOGLE SHEETS SETUP ---
 try:
-    client_gs = gspread.service_account(filename='credentials.json')
-    sheet = client_gs.open("overall_db")
+    # This logic works for both local (file) and Render (Env Var)
+    creds_path = 'credentials.json'
+    if os.path.exists(creds_path):
+        client_gs = gspread.service_account(filename=creds_path)
+    else:
+        # For professional deployment, we'd use an Env Var for the JSON content
+        creds_dict = json.loads(os.environ.get("GOOGLE_SHEETS_CREDS_JSON"))
+        client_gs = gspread.service_account_from_dict(creds_dict)
     
+    sheet = client_gs.open("overall_db")
     timetable_ws = sheet.worksheet("Timetable")
     logs_ws = sheet.worksheet("Logs")
-    
-    print("✅ Gemini 3 Flash Preview Backend: Connected & Active.")
+    print("✅ Backend Status: Connected to Google Sheets & Gemini 3")
 except Exception as e:
     print(f"❌ Connection Error: {e}")
 
 @app.route('/', methods=['GET'])
 def home():
-    return jsonify({"message": "Sriniket's ADFS Backend (Gemini 3 Flash) is Live!"}), 200
+    return jsonify({"message": "Sriniket's ADFS Backend is Live!"}), 200
 
 @app.route('/get_schedule', methods=['GET'])
 def get_schedule():
+    """Fetches routine, skipping the Row 1 Title and using Row 2 as Headers."""
     try:
-        records = timetable_ws.get_all_records(head=1)
-        clean_records = [{k: v for k, v in record.items() if k != ''} for record in records]
+        # Fetching all values to handle the Row 1 Title offset
+        all_values = timetable_ws.get_all_values()
+        
+        if len(all_values) < 2:
+            return jsonify({"status": "error", "message": "Sheet is empty"}), 400
+            
+        # Row 0 is Title, Row 1 is Headers ('Day', 'Time', 'Activity', 'Duration')
+        headers = all_values[1] 
+        data_rows = all_values[2:]
+        
+        # Clean headers to remove any trailing spaces
+        headers = [h.strip() for h in headers]
+        
+        # Convert rows to list of dictionaries, skipping empty rows
+        clean_records = []
+        for row in data_rows:
+            if any(row): # Only add if the row isn't totally empty
+                record = dict(zip(headers, row))
+                # Remove any keys that are empty strings (from empty columns)
+                clean_record = {k: v for k, v in record.items() if k != ''}
+                clean_records.append(clean_record)
+        
         return jsonify({"status": "success", "data": clean_records}), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -59,51 +86,23 @@ def log_session():
 
 @app.route('/analyze_patterns', methods=['GET'])
 def analyze_patterns():
-    """Uses Gemini 3 Flash to optimize Sriniket's schedule."""
     try:
-        logs = logs_ws.get_all_values()[-20:] # AI studies the last 20 entries
-        timetable = timetable_ws.get_all_values()
+        logs = logs_ws.get_all_values()[-20:]
+        timetable = timetable_ws.get_all_values()[1:15] # Only send headers + first few rows
         
         prompt = f"""
         User: Sriniket
-        Role: High-Performance DSA & Gym Coach
-        Context: Timetable is {timetable}. Actual logs are {logs}.
-        
-        Task: Identify why Sriniket is missing his sessions or accumulating 'Time Debt'.
-        Provide ONE specific, high-impact suggestion.
-        
-        OUTPUT RULES: Return ONLY a raw JSON object. Do not use markdown.
-        Format: 
-        {{
-            "title": "Clear Headline",
-            "message": "The reasoning behind the advice",
-            "action_target": "Activity Name",
-            "new_val": "Revised Duration/Time"
-        }}
+        Role: Performance Coach
+        Context: Timetable is {timetable}. Recent logs are {logs}.
+        Task: Provide ONE JSON suggestion to reduce 'Time Debt'.
+        Rules: Return ONLY raw JSON. No markdown.
+        Format: {{"title": "", "message": "", "action_target": "", "new_val": ""}}
         """
-        
-        # Using Gemini 3's fast generation
         response = model.generate_content(prompt)
-        
-        # Surgical cleaning of the AI response
         raw_text = response.text.strip().replace('```json', '').replace('```', '')
         ai_data = json.loads(raw_text)
         
         return jsonify({"status": "success", "analysis": ai_data}), 200
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-@app.route('/update_timetable', methods=['PATCH'])
-def update_timetable():
-    try:
-        data = request.json
-        activity = data.get('activity')
-        new_val = data.get('new_val')
-        
-        cell = timetable_ws.find(activity)
-        timetable_ws.update_cell(cell.row, cell.col + 1, new_val)
-        
-        return jsonify({"status": "success", "message": f"Synced {activity} to {new_val}"}), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
