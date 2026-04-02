@@ -8,7 +8,7 @@ import os
 import google.generativeai as genai
 import json
 import pytz
-import re  # New for Case-Insensitive Search
+import re 
 
 app = Flask(__name__)
 CORS(app)
@@ -37,6 +37,13 @@ def init_sheets():
 
 init_sheets()
 
+# --- ⚡ V4.5 CACHE LAYER ---
+# Stored in server memory to prevent redundant AI calls
+analysis_cache = {
+    "data": None,
+    "log_count": 0
+}
+
 # --- 🌐 ENDPOINTS ---
 
 @app.route('/', methods=['GET'])
@@ -44,7 +51,7 @@ def health():
     status = "Ready" if logs_ws else "Error"
     return jsonify({
         "service": "Routine Flow Backend",
-        "version": "4.3",
+        "version": "4.5 (Cached)",
         "sheets": status
     }), 200
 
@@ -52,6 +59,7 @@ def health():
 def get_schedule():
     try:
         all_val = timetable_ws.get_all_values()
+        # Row 2 contains headers
         headers = [h.strip() for h in all_val[1]] 
         data = [dict(zip(headers, r)) for r in all_val[2:] if any(r)]
         return jsonify({"status": "success", "data": data})
@@ -95,12 +103,31 @@ def bulk_log():
 
 @app.route('/analyze_patterns', methods=['GET'])
 def analyze_patterns():
+    global analysis_cache
     try:
-        recs = logs_ws.get_all_records()
-        if len(recs) < 3: 
+        # 1. Fetch all raw log values
+        all_logs = logs_ws.get_all_values()
+        current_count = len(all_logs)
+
+        # 2. CACHE HIT: If count is same, skip Gemini and return cached data
+        if analysis_cache["data"] and current_count == analysis_cache["log_count"]:
+            return jsonify({
+                "status": "success", 
+                "analysis": analysis_cache["data"],
+                "source": "cache"
+            }), 200
+        
+        # 3. If logs are too few (Header row + Title row + <3 data rows), return None
+        if current_count < 5: 
             return jsonify({"status": "success", "analysis": None}), 200
         
-        log_context = json.dumps(recs[-10:])
+        # 4. proceed with fresh Gemini analysis
+        # Using the last 10 rows for context
+        headers = all_logs[1] 
+        recent_rows = all_logs[-10:]
+        recs = [dict(zip(headers, row)) for row in recent_rows]
+        
+        log_context = json.dumps(recs)
         prompt = f"""
         Analyze these routine logs for Sriniket: {log_context}. 
         IMPORTANT: All durations (planned, actual, and debt) are in DECIMAL HOURS.
@@ -115,7 +142,17 @@ def analyze_patterns():
         """
         response = model.generate_content(prompt)
         clean_text = response.text.strip().replace("```json", "").replace("```", "")
-        return jsonify({"status": "success", "analysis": json.loads(clean_text)})
+        analysis_data = json.loads(clean_text)
+
+        # 5. UPDATE CACHE
+        analysis_cache["data"] = analysis_data
+        analysis_cache["log_count"] = current_count
+
+        return jsonify({
+            "status": "success", 
+            "analysis": analysis_data,
+            "source": "gemini_api"
+        }), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -126,26 +163,27 @@ def update_timetable():
         activity = data.get('activity')
         new_val = data.get('new_val')
         
-        # --- 🛠️ V4.3 FIX: Case-Insensitive Regex Search ---
-        # This finds "Gym" even if the AI sends "GYM" or "gym"
+        # Case-Insensitive Regex Search
         pattern = re.compile(rf'^{re.escape(activity)}$', re.IGNORECASE)
         cell = timetable_ws.find(pattern)
         
         if cell:
-            # Duration is in the next column
             timetable_ws.update_cell(cell.row, cell.col + 1, new_val)
-            return jsonify({"status": "success", "message": f"Updated {activity} to {new_val}"}), 200
+            return jsonify({"status": "success", "message": f"Updated {activity}"}), 200
         
-        return jsonify({"status": "error", "message": f"Activity '{activity}' not found in sheet"}), 404
+        return jsonify({"status": "error", "message": f"Activity '{activity}' not found"}), 404
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/clear_logs', methods=['DELETE'])
 def clear_logs():
+    global analysis_cache
     try:
         records = logs_ws.get_all_values()
         if len(records) > 1:
             logs_ws.delete_rows(2, len(records))
+            # Clear cache so engine doesn't show old data for empty sheet
+            analysis_cache = {"data": None, "log_count": 0}
             return jsonify({"status": "success"}), 200
         return jsonify({"status": "success", "message": "Sheet already empty"}), 200
     except Exception as e:

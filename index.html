@@ -21,6 +21,7 @@
         .tab-inactive { color: rgba(255,255,255,0.3) !important; border-bottom: 2px solid transparent !important; }
         .toast-error { border-color: #FF6B6B !important; color: #FF6B6B !important; }
         button:active { transform: scale(0.98); }
+        .stale-content { opacity: 0.5; filter: grayscale(0.5); transition: opacity 0.3s ease; }
     </style>
 </head>
 <body class="font-sans">
@@ -82,8 +83,6 @@
     <script>
         const BackendAPI = "https://routine-backend-7yn2.onrender.com";
         let AppState = { currentActivity: null, allActivities: [], timerSeconds: 0, totalSeconds: 0, timerState: 'READY', timerInterval: null };
-        
-        // --- 🛠️ V4.4 FIX: Check LocalStorage for pending Undo ---
         let lastUpdate = JSON.parse(localStorage.getItem('routine_last_update')) || { activity: null, originalVal: null };
 
         document.addEventListener('DOMContentLoaded', fetchSchedule);
@@ -159,23 +158,36 @@
 
         async function fetchInsights() {
             const grid = document.getElementById('insights-grid');
-            grid.innerHTML = '<div class="col-span-full py-12 text-white/20 text-center animate-pulse text-[10px] uppercase tracking-widest">Engine Connecting...</div>';
+            
+            // --- ⚡ V4.5 OPTIMIZATION: Instant UI from Cache ---
+            const cachedInsight = JSON.parse(localStorage.getItem('last_ai_insight'));
+            if (cachedInsight) {
+                renderInsightCard(cachedInsight.action_target, cachedInsight.new_val, "...", cachedInsight.title, cachedInsight.message);
+                grid.firstElementChild.classList.add('stale-content');
+            } else {
+                grid.innerHTML = '<div class="col-span-full py-12 text-white/20 text-center animate-pulse text-[10px] uppercase tracking-widest">Engine Connecting...</div>';
+            }
+
             try {
                 const res = await fetch(`${BackendAPI}/analyze_patterns`);
                 const result = await res.json();
+                
                 if (result.status === "success" && result.analysis) {
+                    // Update Cache
+                    localStorage.setItem('last_ai_insight', JSON.stringify(result.analysis));
+                    
                     const i = result.analysis;
                     const targetActivity = AppState.allActivities.find(a => a.Activity.trim().toLowerCase() === i.action_target.trim().toLowerCase());
                     const originalVal = targetActivity ? targetActivity.Duration : "Unknown";
                     
-                    // --- 🛠️ V4.4 Logic: If we have an active undo, show the 'Adjustment Live' card ---
-                    if (lastUpdate.activity && lastUpdate.activity.toLowerCase() === i.action_target.toLowerCase()) {
-                        renderInsightCard(i.action_target, i.new_val, lastUpdate.originalVal, "ADJUSTMENT LIVE", "Database synchronized successfully.", true);
-                    } else {
-                        renderInsightCard(i.action_target, i.new_val, originalVal, i.title, i.message);
-                    }
-                } else { grid.innerHTML = '<p class="col-span-full text-center text-white/20 text-[10px] uppercase">Need more logs for Analysis</p>'; }
-            } catch (e) { grid.innerHTML = '<p class="col-span-full text-center text-debt text-[10px] font-black uppercase">Engine Offline</p>'; }
+                    // Show Fresh Data (Remove stale look)
+                    renderInsightCard(i.action_target, i.new_val, originalVal, i.title, i.message);
+                } else if (!cachedInsight) {
+                    grid.innerHTML = '<p class="col-span-full text-center text-white/20 text-[10px] uppercase tracking-widest">Need more log data</p>';
+                }
+            } catch (e) {
+                if(!cachedInsight) grid.innerHTML = '<p class="col-span-full text-center text-debt text-[10px] font-black uppercase">Engine Offline</p>';
+            }
         }
 
         function renderInsightCard(activity, newVal, originalVal, title, message, showUndo = false) {
@@ -220,24 +232,19 @@
         async function undoStrategy() {
             showToast('Reverting...', 'info');
             try {
-                // --- 🛠️ V4.4 FIX: Improved Error Handling in Revert ---
                 const res = await fetch(`${BackendAPI}/update_timetable`, { 
                     method: 'PATCH', 
                     headers: {'Content-Type': 'application/json'}, 
                     body: JSON.stringify({ activity: lastUpdate.activity, new_val: lastUpdate.originalVal }) 
                 });
-                
                 const result = await res.json();
-
                 if(res.ok) {
                     showToast("Restored Original Schedule", "success");
                     localStorage.removeItem('routine_last_update');
                     lastUpdate = { activity: null, originalVal: null };
                     setTimeout(() => location.reload(), 1500);
-                } else {
-                    showToast(`Revert Failed: ${result.message}`, 'error');
-                }
-            } catch (e) { showToast("Network Error during Revert", "error"); }
+                } else { showToast(`Revert Failed: ${result.message}`, 'error'); }
+            } catch (e) { showToast("Network Error", "error"); }
         }
 
         function switchTab(view) {
