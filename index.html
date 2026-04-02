@@ -4,9 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Routine Flow | Command Center</title>
-    
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='white'/><path d='M30 50 L50 20 L45 50 L70 50 L50 80 L55 50 Z' fill='black'/></svg>">
-    
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono:wght@700&family=Outfit:wght@800&display=swap" rel="stylesheet">
     <script>
@@ -18,14 +16,11 @@
     <style>
         body { background-color: #000000; color: #E5E7EB; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
         .glass-panel { background: rgba(30,30,30,0.7); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,0.05); }
-        .timer-glow { text-shadow: 0 0 50px rgba(255,255,255,0.15); }
-        .zone-panel { border-left: 2px solid rgba(255,255,255,0.1); padding-left: 1rem; }
         .tab-active { color: white !important; border-bottom: 2px solid white !important; }
         .tab-inactive { color: rgba(255,255,255,0.3) !important; border-bottom: 2px solid transparent !important; }
         .toast-error { border-color: #FF6B6B !important; color: #FF6B6B !important; }
-        button:active { transform: scale(0.98); }
-        .stale-content { opacity: 0.5; filter: grayscale(0.5); transition: opacity 0.3s ease; }
         .stat-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 1.5rem; padding: 1.5rem; }
+        .chart-bar { transition: height 0.6s cubic-bezier(0.34, 1.56, 0.64, 1); }
     </style>
 </head>
 <body class="font-sans">
@@ -44,29 +39,13 @@
     <main class="pt-32 md:pt-40 pb-12 px-6 max-w-6xl mx-auto min-h-screen">
         
         <section id="view-dashboard" class="space-y-16 md:space-y-24">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-8 items-center">
-                <div class="zone-panel flex flex-col space-y-1">
-                    <span class="text-[10px] font-black tracking-widest text-white/30 uppercase">Previous</span>
-                    <h3 id="prev-activity" class="text-white text-sm font-black uppercase">---</h3>
-                    <span id="prev-progress" class="text-white/50 font-mono text-[10px]">0.00h / 0.00h</span>
-                </div>
-                <div class="flex flex-col items-center space-y-4 text-center">
-                    <span id="current-activity" class="text-white text-sm font-black tracking-[0.2em] px-8 py-3 rounded-full border-2 border-white/20 bg-black min-w-[180px] uppercase">---</span>
-                    <div class="flex items-baseline space-x-2 font-mono">
-                        <span id="activity-progress" class="text-white text-2xl md:text-3xl font-black">0.00h</span>
-                        <span class="text-white/20 text-lg">/</span>
-                        <span id="activity-total" class="text-white/60 text-sm font-bold">0.00h</span>
-                    </div>
-                </div>
-                <div class="zone-panel border-l-2 md:border-l flex flex-col space-y-1 items-end md:items-start text-right md:text-left">
-                    <span class="text-[10px] font-black tracking-widest text-white/30 uppercase">Next</span>
-                    <h3 id="next-activity" class="text-white text-sm font-black uppercase">---</h3>
-                    <span id="next-total" class="text-white/30 font-mono text-[10px]">0.00h / 0.00h</span>
-                </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8 items-center text-center md:text-left">
+                <div class="zone-panel flex flex-col space-y-1"><span class="text-[10px] font-black text-white/30 uppercase tracking-widest">Previous</span><h3 id="prev-activity" class="text-white text-sm font-black uppercase">---</h3><span id="prev-progress" class="text-white/50 font-mono text-[10px]">0.00h / 0.00h</span></div>
+                <div class="flex flex-col items-center space-y-4"><span id="current-activity" class="text-white text-sm font-black tracking-[0.2em] px-8 py-3 rounded-full border-2 border-white/20 bg-black min-w-[180px] uppercase">---</span><div class="flex items-baseline space-x-2 font-mono"><span id="activity-progress" class="text-white text-2xl md:text-3xl font-black">0.00h</span><span class="text-white/20 text-lg">/</span><span id="activity-total" class="text-white/60 text-sm font-bold">0.00h</span></div></div>
+                <div class="zone-panel border-l-2 md:border-l flex flex-col space-y-1 items-end md:items-start text-right md:text-left"><span class="text-[10px] font-black text-white/30 uppercase tracking-widest">Next</span><h3 id="next-activity" class="text-white text-sm font-black uppercase">---</h3><span id="next-total" class="text-white/30 font-mono text-[10px]">0.00h / 0.00h</span></div>
             </div>
-
             <div class="flex flex-col items-center space-y-10">
-                <div id="main-timer" class="font-mono text-5xl md:text-[10rem] font-800 tracking-tighter text-white timer-glow leading-none">00h:00m:00s</div>
+                <div id="main-timer" class="font-mono text-5xl md:text-[10rem] font-800 tracking-tighter text-white leading-none">00h:00m:00s</div>
                 <div class="flex flex-col sm:flex-row gap-4 w-full sm:w-auto px-4">
                     <button onclick="handleCheckIn()" class="bg-white text-black font-black px-12 py-4 rounded-2xl tracking-[0.2em] text-xs uppercase">CHECK-IN</button>
                     <button onclick="handleCheckOut()" class="bg-card text-white border border-white/20 font-black px-12 py-4 rounded-2xl tracking-[0.2em] text-xs uppercase">CHECK-OUT</button>
@@ -91,72 +70,57 @@
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div class="stat-card flex flex-col justify-between h-40">
                     <span class="text-[10px] font-black text-white/30 uppercase tracking-[0.2em]">Total Study</span>
-                    <div class="flex items-baseline space-x-2">
-                        <span id="stat-study-hrs" class="text-4xl font-black text-white">0.0</span>
-                        <span class="text-sm font-bold text-white/20 uppercase tracking-widest">Hours</span>
-                    </div>
-                    <div class="w-full bg-white/5 h-1 rounded-full overflow-hidden">
-                        <div class="bg-white w-2/3 h-full"></div>
-                    </div>
+                    <div class="flex items-baseline space-x-2"><span id="stat-study-hrs" class="text-4xl font-black text-white">0.0</span><span class="text-sm font-bold text-white/20 uppercase tracking-widest">Hours</span></div>
+                    <div class="w-full bg-white/5 h-1 rounded-full overflow-hidden"><div id="study-progress-bar" class="bg-white h-full transition-all duration-1000" style="width: 0%"></div></div>
                 </div>
                 <div class="stat-card flex flex-col justify-between h-40">
                     <span class="text-[10px] font-black text-white/30 uppercase tracking-[0.2em]">Adherence Rate</span>
-                    <div class="flex items-baseline space-x-2">
-                        <span id="stat-adherence" class="text-4xl font-black text-white">0%</span>
-                    </div>
-                    <span class="text-[10px] font-bold text-sage/40 uppercase">Logging is active</span>
+                    <div class="flex items-baseline space-x-2"><span id="stat-adherence" class="text-4xl font-black text-white">0%</span></div>
+                    <span class="text-[10px] font-bold text-sage/40 uppercase tracking-widest">Consistency Score</span>
                 </div>
                 <div class="stat-card flex flex-col justify-between h-40">
                     <span class="text-[10px] font-black text-white/30 uppercase tracking-[0.2em]">Time Debt</span>
-                    <div class="flex items-baseline space-x-2">
-                        <span id="stat-debt" class="text-4xl font-black text-debt">0.0</span>
-                        <span class="text-sm font-bold text-debt/20 uppercase tracking-widest">Hours</span>
-                    </div>
-                    <span class="text-[10px] font-bold text-debt/40 uppercase">Pending sessions</span>
+                    <div class="flex items-baseline space-x-2"><span id="stat-debt" class="text-4xl font-black text-debt">0.0</span><span class="text-sm font-bold text-debt/20 uppercase tracking-widest">Hours</span></div>
+                    <span class="text-[10px] font-bold text-debt/40 uppercase tracking-widest">Session Shortfall</span>
                 </div>
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div class="stat-card min-h-[300px] flex flex-col items-center justify-center border-dashed border-white/10 bg-transparent">
-                    <div class="w-32 h-32 border-[12px] border-white/5 border-t-white rounded-full flex items-center justify-center">
-                        <span class="text-xl font-black">--%</span>
+                <div class="stat-card min-h-[300px] flex flex-col items-center justify-center">
+                    <div class="relative w-32 h-32 flex items-center justify-center">
+                        <svg class="absolute inset-0 w-full h-full -rotate-90">
+                            <circle cx="64" cy="64" r="54" fill="transparent" stroke="rgba(255,255,255,0.05)" stroke-width="12"/>
+                            <circle id="adherence-circle" cx="64" cy="64" r="54" fill="transparent" stroke="white" stroke-width="12" stroke-dasharray="339.29" stroke-dashoffset="339.29" class="transition-all duration-1000"/>
+                        </svg>
+                        <span id="circle-pct" class="text-xl font-black">0%</span>
                     </div>
-                    <span class="mt-6 text-[10px] font-black uppercase text-white/30 tracking-[0.3em]">Habit Consistency</span>
+                    <span class="mt-6 text-[10px] font-black uppercase text-white/30 tracking-[0.3em]">Habit Strength</span>
                 </div>
                 <div class="stat-card min-h-[300px] flex flex-col justify-end p-8 space-y-4">
-                    <div class="flex items-end space-x-2 h-32">
-                        <div class="bg-white/10 w-full h-[40%] rounded-t-lg"></div>
-                        <div class="bg-white/10 w-full h-[60%] rounded-t-lg"></div>
-                        <div class="bg-white/10 w-full h-[30%] rounded-t-lg"></div>
-                        <div class="bg-white w-full h-[90%] rounded-t-lg"></div>
-                        <div class="bg-white/10 w-full h-[50%] rounded-t-lg"></div>
+                    <div id="chart-bars" class="flex items-end space-x-2 h-32">
+                        <div class="bg-white/10 w-full rounded-t-lg chart-bar h-[5%]"></div>
+                        <div class="bg-white/10 w-full rounded-t-lg chart-bar h-[5%]"></div>
+                        <div class="bg-white/10 w-full rounded-t-lg chart-bar h-[5%]"></div>
+                        <div class="bg-white/10 w-full rounded-t-lg chart-bar h-[5%]"></div>
+                        <div class="bg-white/10 w-full rounded-t-lg chart-bar h-[5%]"></div>
+                        <div class="bg-white/10 w-full rounded-t-lg chart-bar h-[5%]"></div>
+                        <div class="bg-white/10 w-full rounded-t-lg chart-bar h-[5%]"></div>
                     </div>
-                    <span class="text-[10px] font-black uppercase text-white/30 tracking-[0.3em]">Load Balance</span>
+                    <span class="text-[10px] font-black uppercase text-white/30 tracking-[0.3em]">Load Balance (Mon-Sun)</span>
                 </div>
             </div>
         </section>
     </main>
 
-    <div id="loading-state" class="fixed inset-0 z-[100] bg-black flex items-center justify-center">
-        <div class="w-8 h-8 border-4 border-white/10 border-t-white rounded-full animate-spin"></div>
-    </div>
-
+    <div id="loading-state" class="fixed inset-0 z-[100] bg-black flex items-center justify-center"><div class="w-8 h-8 border-4 border-white/10 border-t-white rounded-full animate-spin"></div></div>
     <div id="toast-container" class="fixed bottom-10 right-10 flex flex-col gap-4 z-[110]"></div>
 
     <script>
         const BackendAPI = "https://routine-backend-7yn2.onrender.com";
-        let AppState = { currentActivity: null, allActivities: [], timerSeconds: 0, totalSeconds: 0, timerState: 'READY', timerInterval: null };
+        let AppState = { currentActivity: null, allActivities: [], timerSeconds: 0, totalSeconds: 0, timerState: 'READY', analyticsData: null };
         let lastUpdate = JSON.parse(localStorage.getItem('routine_last_update')) || { activity: null, originalVal: null };
 
         document.addEventListener('DOMContentLoaded', fetchSchedule);
-
-        function parseTimeToMinutes(timeStr) {
-            const [time, mod] = timeStr.trim().split(' ');
-            let [h, m] = time.split(':');
-            h = parseInt(h); if(h === 12) h = 0;
-            let t = h * 60 + parseInt(m);
-            return mod === 'PM' ? t + 720 : t;
-        }
 
         async function fetchSchedule() {
             try {
@@ -164,37 +128,39 @@
                 const result = await res.json();
                 if (result.status === "success") {
                     AppState.allActivities = result.data;
-                    const now = new Date();
-                    const curIST = now.toLocaleTimeString('en-US', { hour12: true, hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' });
-                    const curMin = parseTimeToMinutes(curIST);
-                    let idx = result.data.findIndex(i => {
-                        const [s, e] = i.Time.split('-').map(parseTimeToMinutes);
-                        return e < s ? (curMin >= s || curMin <= e) : (curMin >= s && curMin <= e);
-                    });
-                    if(idx === -1) idx = 0;
-                    const data = result.data[idx];
-                    const prev = result.data[idx-1] || result.data[result.data.length-1];
-                    const next = result.data[idx+1] || result.data[0];
-                    AppState.currentActivity = data;
-                    document.getElementById('current-activity').innerText = data.Activity;
-                    const totalHrs = parseFloat(data.Duration) || 1;
-                    AppState.totalSeconds = Math.round(totalHrs * 3600);
-                    AppState.timerSeconds = AppState.totalSeconds;
-                    document.getElementById('activity-total').innerText = `${totalHrs.toFixed(2)}h`;
-                    document.getElementById('prev-activity').innerText = prev.Activity;
-                    document.getElementById('prev-progress').innerText = `${parseFloat(prev.Duration).toFixed(2)}h / ${parseFloat(prev.Duration).toFixed(2)}h`;
-                    document.getElementById('next-activity').innerText = next.Activity;
-                    document.getElementById('next-total').innerText = `0.00h / ${parseFloat(next.Duration).toFixed(2)}h`;
-                    updateTimerDisplay();
+                    updateDashboardUI();
                 }
-            } finally { if(document.getElementById('loading-state')) document.getElementById('loading-state').remove(); }
+            } finally { document.getElementById('loading-state')?.remove(); }
+        }
+
+        function updateDashboardUI() {
+            const now = new Date();
+            const curIST = now.toLocaleTimeString('en-US', { hour12: true, hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' });
+            const parseTime = (t) => {
+                const [time, mod] = t.split(' ');
+                let [h, m] = time.split(':').map(Number);
+                if(h === 12) h = 0;
+                return (mod === 'PM' ? h + 12 : h) * 60 + m;
+            };
+            const curMin = parseTime(curIST);
+            let idx = AppState.allActivities.findIndex(i => {
+                const [s, e] = i.Time.split('-').map(parseTime);
+                return e < s ? (curMin >= s || curMin <= e) : (curMin >= s && curMin <= e);
+            });
+            if(idx === -1) idx = 0;
+            const data = AppState.allActivities[idx];
+            AppState.currentActivity = data;
+            document.getElementById('current-activity').innerText = data.Activity;
+            const hrs = parseFloat(data.Duration) || 1;
+            AppState.totalSeconds = Math.round(hrs * 3600);
+            AppState.timerSeconds = AppState.totalSeconds;
+            document.getElementById('activity-total').innerText = `${hrs.toFixed(2)}h`;
+            updateTimerDisplay();
         }
 
         function updateTimerDisplay() {
             const abs = Math.abs(AppState.timerSeconds);
-            const h = Math.floor(abs/3600).toString().padStart(2,'0');
-            const m = Math.floor((abs%3600)/60).toString().padStart(2,'0');
-            const s = (abs%60).toString().padStart(2,'0');
+            const h = Math.floor(abs/3600).toString().padStart(2,'0'), m = Math.floor((abs%3600)/60).toString().padStart(2,'0'), s = (abs%60).toString().padStart(2,'0');
             document.getElementById('main-timer').innerText = `${h}h:${m}m:${s}s`;
             document.getElementById('activity-progress').innerText = `${Math.max(0, (AppState.totalSeconds - AppState.timerSeconds)/3600).toFixed(2)}h`;
         }
@@ -207,84 +173,85 @@
 
         async function handleCheckOut() {
             clearInterval(AppState.timerInterval);
-            const plannedHrs = parseFloat(AppState.currentActivity.Duration) || 0;
-            const elapsedSecs = AppState.totalSeconds - AppState.timerSeconds;
-            const actualHrs = parseFloat((elapsedSecs / 3600).toFixed(2));
-            const debtHrs = parseFloat(Math.max(0, plannedHrs - actualHrs).toFixed(2));
+            const planned = parseFloat(AppState.currentActivity.Duration) || 0;
+            const actual = parseFloat(((AppState.totalSeconds - AppState.timerSeconds)/3600).toFixed(2));
+            const debt = parseFloat(Math.max(0, planned - actual).toFixed(2));
             await fetch(`${BackendAPI}/log_session`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ activity: AppState.currentActivity.Activity, planned_duration: plannedHrs, actual_duration: actualHrs, time_debt: debtHrs })
+                body: JSON.stringify({ activity: AppState.currentActivity.Activity, planned_duration: planned, actual_duration: actual, time_debt: debt })
             });
             location.reload();
         }
 
-        async function fetchInsights() {
-            const grid = document.getElementById('insights-grid');
-            const cachedInsight = JSON.parse(localStorage.getItem('last_ai_insight'));
-            if (cachedInsight) {
-                renderInsightCard(cachedInsight.action_target, cachedInsight.new_val, "...", cachedInsight.title, cachedInsight.message);
-                grid.firstElementChild.classList.add('stale-content');
-            } else {
-                grid.innerHTML = '<div class="col-span-full py-12 text-white/20 text-center animate-pulse text-[10px] uppercase tracking-widest">Engine Connecting...</div>';
-            }
+        async function fetchAnalytics() {
             try {
-                const res = await fetch(`${BackendAPI}/analyze_patterns`);
+                const res = await fetch(`${BackendAPI}/get_analytics`);
                 const result = await res.json();
-                if (result.status === "success" && result.analysis) {
-                    localStorage.setItem('last_ai_insight', JSON.stringify(result.analysis));
-                    const i = result.analysis;
-                    const targetActivity = AppState.allActivities.find(a => a.Activity.trim().toLowerCase() === i.action_target.trim().toLowerCase());
-                    const originalVal = targetActivity ? targetActivity.Duration : "Unknown";
-                    renderInsightCard(i.action_target, i.new_val, originalVal, i.title, i.message);
+                if (result.status === "success") {
+                    AppState.analyticsData = result;
+                    toggleRange('week');
                 }
-            } catch (e) {
-                if(!cachedInsight) grid.innerHTML = '<p class="col-span-full text-center text-debt text-[10px] font-black uppercase">Engine Offline</p>';
-            }
-        }
-
-        function renderInsightCard(activity, newVal, originalVal, title, message, showUndo = false) {
-            const grid = document.getElementById('insights-grid');
-            const displayOriginal = originalVal.toString().toLowerCase().includes('h') ? originalVal : `${originalVal}h`;
-            const displayNew = newVal.toString().toLowerCase().includes('h') ? newVal : `${newVal}h`;
-            grid.innerHTML = `<div class="bg-card border border-white/10 p-8 rounded-[2.5rem] flex flex-col space-y-6 animate-in fade-in zoom-in duration-500"><div class="flex flex-col space-y-2"><span class="text-sage text-[10px] font-black tracking-[0.5em] uppercase">AI Optimization</span><h4 class="text-white font-display text-xl font-black uppercase italic tracking-tight">${title}</h4></div><p class="text-white/50 text-sm font-medium leading-relaxed italic">"${message}"</p><div class="pt-6 border-t border-white/5"><button onclick="${!showUndo ? `applyStrategy('${activity}', '${newVal}', '${originalVal}')` : `undoStrategy()`}" class="w-full py-5 ${!showUndo ? 'bg-white text-black' : 'bg-card text-white border border-white/20'} rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] transition-all">${!showUndo ? `ADJUST ${activity}: ${displayOriginal} ➔ ${displayNew}` : `REVERT ${activity}: ${displayNew} ➔ ${displayOriginal}`}</button></div></div>`;
-        }
-
-        async function applyStrategy(act, newVal, orig) {
-            showToast('Applying Update...', 'info');
-            try {
-                const res = await fetch(`${BackendAPI}/update_timetable`, { method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ activity: act, new_val: newVal }) });
-                if(res.ok) { lastUpdate = { activity: act, originalVal: orig }; localStorage.setItem('routine_last_update', JSON.stringify(lastUpdate)); renderInsightCard(act, newVal, orig, "ADJUSTMENT LIVE", "Database synchronized successfully.", true); showToast('Schedule Synchronized', 'success'); }
-            } catch (e) { showToast("Connection Failed", "error"); }
-        }
-
-        async function undoStrategy() {
-            showToast('Reverting...', 'info');
-            try {
-                const res = await fetch(`${BackendAPI}/update_timetable`, { method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ activity: lastUpdate.activity, new_val: lastUpdate.originalVal }) });
-                if(res.ok) { showToast("Restored Schedule", "success"); localStorage.removeItem('routine_last_update'); lastUpdate = { activity: null, originalVal: null }; setTimeout(() => location.reload(), 1500); }
-            } catch (e) { showToast("Network Error", "error"); }
-        }
-
-        function switchTab(view) {
-            const dash = document.getElementById('view-dashboard'), ins = document.getElementById('view-insights'), ana = document.getElementById('view-analytics');
-            const dBtn = document.getElementById('nav-dashboard'), iBtn = document.getElementById('nav-insights'), aBtn = document.getElementById('nav-analytics');
-            dash.classList.add('hidden'); ins.classList.add('hidden'); ana.classList.add('hidden');
-            dBtn.classList.replace('tab-active', 'tab-inactive'); iBtn.classList.replace('tab-active', 'tab-inactive'); aBtn.classList.replace('tab-active', 'tab-inactive');
-            if(view === 'dashboard') { dash.classList.remove('hidden'); dBtn.classList.replace('tab-inactive', 'tab-active'); }
-            else if(view === 'insights') { ins.classList.remove('hidden'); iBtn.classList.replace('tab-inactive', 'tab-active'); fetchInsights(); }
-            else if(view === 'analytics') { ana.classList.remove('hidden'); aBtn.classList.replace('tab-inactive', 'tab-active'); }
+            } catch (e) { showToast("Analytics Offline", "error"); }
         }
 
         function toggleRange(range) {
             const w = document.getElementById('btn-week'), o = document.getElementById('btn-overall');
-            if(range === 'week') {
-                w.className = "px-4 py-2 text-[10px] font-black uppercase rounded-lg bg-white text-black transition-all";
-                o.className = "px-4 py-2 text-[10px] font-black uppercase text-white/30 transition-all";
-            } else {
-                o.className = "px-4 py-2 text-[10px] font-black uppercase rounded-lg bg-white text-black transition-all";
-                w.className = "px-4 py-2 text-[10px] font-black uppercase text-white/30 transition-all";
-            }
+            const data = range === 'week' ? AppState.analyticsData.week : AppState.analyticsData.overall;
+            
+            w.className = range === 'week' ? "px-4 py-2 text-[10px] font-black uppercase rounded-lg bg-white text-black transition-all" : "px-4 py-2 text-[10px] font-black uppercase text-white/30 transition-all";
+            o.className = range === 'overall' ? "px-4 py-2 text-[10px] font-black uppercase rounded-lg bg-white text-black transition-all" : "px-4 py-2 text-[10px] font-black uppercase text-white/30 transition-all";
+
+            if(!data) return;
+            document.getElementById('stat-study-hrs').innerText = data.study;
+            document.getElementById('stat-adherence').innerText = data.adherence + "%";
+            document.getElementById('stat-debt').innerText = data.debt;
+            document.getElementById('study-progress-bar').style.width = Math.min(100, (data.study / 10) * 100) + "%";
+            
+            // Update Circle
+            const offset = 339.29 - (339.29 * data.adherence) / 100;
+            document.getElementById('adherence-circle').style.strokeDashoffset = offset;
+            document.getElementById('circle-pct').innerText = data.adherence + "%";
+
+            // Update Chart Bars
+            const maxVal = Math.max(...data.chart, 1);
+            const bars = document.getElementById('chart-bars').children;
+            data.chart.forEach((val, i) => {
+                const height = Math.max(5, (val / maxVal) * 100);
+                bars[i].style.height = height + "%";
+                bars[i].className = val > 0 ? "bg-white w-full rounded-t-lg chart-bar" : "bg-white/10 w-full rounded-t-lg chart-bar";
+            });
+        }
+
+        async function fetchInsights() {
+            const grid = document.getElementById('insights-grid');
+            grid.innerHTML = '<div class="col-span-full py-12 text-white/20 text-center animate-pulse text-[10px] uppercase tracking-widest">Connecting...</div>';
+            try {
+                const res = await fetch(`${BackendAPI}/analyze_patterns`);
+                const result = await res.json();
+                if (result.status === "success" && result.analysis) {
+                    const i = result.analysis;
+                    const target = AppState.allActivities.find(a => a.Activity.trim().toLowerCase() === i.action_target.trim().toLowerCase());
+                    renderInsightCard(i.action_target, i.new_val, target?.Duration || "Unknown", i.title, i.message);
+                }
+            } catch (e) { grid.innerHTML = '<p class="col-span-full text-center text-debt text-[10px] font-black uppercase">Offline</p>'; }
+        }
+
+        function renderInsightCard(activity, newVal, originalVal, title, message, showUndo = false) {
+            const grid = document.getElementById('insights-grid');
+            grid.innerHTML = `<div class="bg-card border border-white/10 p-8 rounded-[2.5rem] flex flex-col space-y-6"><div class="flex flex-col space-y-2"><span class="text-sage text-[10px] font-black tracking-[0.5em] uppercase">AI Optimization</span><h4 class="text-white font-display text-xl font-black uppercase italic tracking-tight">${title}</h4></div><p class="text-white/50 text-sm font-medium leading-relaxed italic">"${message}"</p><div class="pt-6 border-t border-white/5"><button onclick="applyStrategy('${activity}', '${newVal}', '${originalVal}')" class="w-full py-5 bg-white text-black rounded-2xl font-black text-[11px] uppercase tracking-[0.2em]">${activity}: ${originalVal} ➔ ${newVal}</button></div></div>`;
+        }
+
+        function switchTab(view) {
+            const sections = ['dashboard', 'insights', 'analytics'];
+            sections.forEach(s => {
+                document.getElementById(`view-${s}`).classList.add('hidden');
+                document.getElementById(`nav-${s}`).classList.replace('tab-active', 'tab-inactive');
+            });
+            document.getElementById(`view-${view}`).classList.remove('hidden');
+            document.getElementById(`nav-${view}`).classList.replace('tab-inactive', 'tab-active');
+            if(view === 'analytics') fetchAnalytics();
+            if(view === 'insights') fetchInsights();
         }
 
         function showToast(m, t) {
