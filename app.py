@@ -9,9 +9,13 @@ import google.generativeai as genai
 import json
 import pytz
 import re 
+import logging
 
 app = Flask(__name__)
 CORS(app)
+
+# 📝 Enable Server Logging for Render
+logging.basicConfig(level=logging.INFO)
 
 # --- 🌍 CONFIGURATION ---
 IST = pytz.timezone('Asia/Kolkata')
@@ -32,9 +36,9 @@ def init_sheets():
             timetable_ws = sheet.worksheet("Timetable")
             logs_ws = sheet.worksheet("Logs")
             chat_logs_ws = sheet.worksheet("ChatLogs")
-            print("✅ Sheets Status: All Systems Operational.")
+            app.logger.info("✅ Sheets Status: All Systems Operational.")
     except Exception as e:
-        print(f"❌ Sheets Error: {e}")
+        app.logger.error(f"❌ Sheets Error: {e}")
 
 init_sheets()
 
@@ -50,7 +54,7 @@ def sanitize_ts(ts_str):
 
 @app.route('/', methods=['GET'])
 def health():
-    return jsonify({"service": "Routine Flow Architect", "version": "5.4.3", "status": "Ready"}), 200
+    return jsonify({"service": "Routine Flow Architect", "version": "5.4.4", "status": "Ready"}), 200
 
 @app.route('/get_schedule', methods=['GET'])
 def get_schedule():
@@ -89,36 +93,49 @@ def get_analytics():
 @app.route('/chat', methods=['POST'])
 def chat():
     try:
+        # Check if sheets are initialized
+        if not chat_logs_ws or not timetable_ws:
+            init_sheets()
+            
         user_msg = request.json.get('message')
         
-        # 1. Fetch Context
-        timetable = timetable_ws.get_all_records()[-15:]
+        # 1. Faster Context Retrieval
+        timetable = timetable_ws.get_all_records()[-10:] # Reduce size for speed
         raw_history = chat_logs_ws.get_all_records()
-        memory = raw_history[-6:] # Keep context lean for stability
+        memory = raw_history[-8:] # Optimized history window
 
-        # 2. Build the "Safe-Prompt" (Combines system info with the first message)
-        system_context = f"You are 'Routine Flow Architect' for Sriniket. He has a leg/arm injury. TIMETABLE: {json.dumps(timetable)}. If pain is mentioned, prioritize rest. Output JSON for changes: ACTION_RECS: {{\"action_target\": \"...\", \"new_val\": \"...\", \"reason\": \"...\"}}"
+        # 2. Hardened System Instructions
+        system_context = (
+            f"You are 'Routine Flow Architect' for Sriniket. He is recovering from an injury. "
+            f"CURRENT TIMETABLE: {json.dumps(timetable)}. "
+            f"RESPONSE RULES: 1. Prioritize rest if pain is mentioned. 2. Use ACTION_RECS: "
+            f"{{\"action_target\": \"...\", \"new_val\": \"...\", \"reason\": \"...\"}} for schedule changes."
+        )
         
-        model = genai.GenerativeModel('gemini-pro') # Using the most stable model name
+        # Switch to Gemini 1.5 Flash (Most stable for Render)
+        model = genai.GenerativeModel('gemini-1.5-flash')
 
-        # 3. Format history with a fallback for empty sheets
-        formatted_history = []
+        # 3. Secure Role Alternation
+        messages = [{"role": "user", "parts": [system_context]}]
+        
+        # Add 'model' acknowledgement to system context to ensure next is 'user'
+        messages.append({"role": "model", "parts": ["Understood. Architect Engine ready for Sriniket."]})
+        
         for m in memory:
             role = "user" if m['Role'].lower() == 'user' else "model"
-            formatted_history.append({"role": role, "parts": [m['Message']]})
+            # Prevent duplicate roles in sequence
+            if messages and messages[-1]['role'] == role:
+                continue
+            messages.append({"role": role, "parts": [m['Message']]})
 
-        # Ensure history starts with user and alternates
-        if formatted_history and formatted_history[0]['role'] == 'model':
-            formatted_history.pop(0)
+        # Add current message
+        if messages[-1]['role'] == "user":
+             messages.append({"role": "model", "parts": ["Ready for your update."]})
+             
+        messages.append({"role": "user", "parts": [user_msg]})
 
-        # 4. Execute Chat with Context injection in the first message if history is empty
-        chat_session = model.start_chat(history=formatted_history)
-        
-        final_prompt = user_msg
-        if not formatted_history:
-            final_prompt = f"SYSTEM_INSTRUCTIONS: {system_context}\n\nUSER_MESSAGE: {user_msg}"
-
-        response = chat_session.send_message(final_prompt)
+        # 4. Content Generation
+        response = model.generate_content(messages)
         ai_text = response.text
 
         # 5. Save to Sheets
@@ -127,7 +144,7 @@ def chat():
 
         return jsonify({"status": "success", "text": ai_text}), 200
     except Exception as e:
-        # 🛡️ THE DEBUGGER: This will show you exactly what's wrong in the browser console
+        app.logger.error(f"CHAT_CRASH: {str(e)}")
         return jsonify({"status": "error", "message": f"QA_DEBUG: {str(e)}"}), 500
 
 @app.route('/log_session', methods=['POST'])
