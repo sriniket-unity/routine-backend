@@ -16,7 +16,6 @@ CORS(app)
 # --- 🌍 CONFIGURATION ---
 IST = pytz.timezone('Asia/Kolkata')
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
-model = genai.GenerativeModel('gemini-3-flash-preview')
 
 # --- 📊 SHEETS CONNECTION ---
 timetable_ws = None
@@ -51,7 +50,7 @@ def sanitize_ts(ts_str):
 
 @app.route('/', methods=['GET'])
 def health():
-    return jsonify({"service": "Routine Flow Architect", "version": "5.4", "status": "Ready"}), 200
+    return jsonify({"service": "Routine Flow Architect", "version": "5.4.2", "status": "Ready"}), 200
 
 @app.route('/get_schedule', methods=['GET'])
 def get_schedule():
@@ -96,42 +95,67 @@ def get_analytics():
         return jsonify({"status": "success", "overall": process_subset(all_logs), "week": process_subset([r for r in all_logs if IST.localize(datetime.strptime(sanitize_ts(r.get('Timestamp', '')), '%Y-%m-%d %H:%M')) >= start_of_week])}), 200
     except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
 
+# --- 🤖 CHAT ENGINE (V5.4.2: FIXED ROLE ALTERNATION) ---
 @app.route('/chat', methods=['POST'])
 def chat():
     try:
         user_msg = request.json.get('message')
+        
+        # Fetch data for context
         raw_history = chat_logs_ws.get_all_records()
         memory = raw_history[-10:] if len(raw_history) > 10 else raw_history
-        timetable = timetable_ws.get_all_records()
+        timetable = timetable_ws.get_all_records()[-15:]
+
+        # 🧠 THE FIX: Use system_instruction to avoid role conflicts
+        sys_instr = f"""
+        You are 'Routine Flow Architect' for Sriniket. 
+        Context: Sriniket is recovering from a bike accident. 
+        Timetable Context: {json.dumps(timetable)}. 
         
-        system_prompt = f"You are 'Routine Flow Architect' for Sriniket. Recovering from bike accident. TIMETABLE: {json.dumps(timetable)}. MEMORY: {json.dumps(memory)}. Suggest changes using ACTION_RECS: {{\"action_target\": \"...\", \"new_val\": \"...\", \"reason\": \"...\"}}"
-        
-        messages = [{"role": "user", "parts": [system_prompt]}]
+        Rules:
+        1. If he mentions pain/injury, prioritize rest.
+        2. Suggest schedule changes ONLY via this JSON tag: 
+           ACTION_RECS: {{"action_target": "Activity Name", "new_val": "0.5h", "reason": "..."}}
+        """
+
+        model = genai.GenerativeModel(
+            model_name='gemini-1.5-flash', 
+            system_instruction=sys_instr
+        )
+
+        # Build alternating history
+        formatted_history = []
         for m in memory:
             role = "user" if m['Role'].lower() == 'user' else "model"
-            messages.append({"role": role, "parts": [m['Message']]})
-        messages.append({"role": "user", "parts": [user_msg]})
+            formatted_history.append({"role": role, "parts": [m['Message']]})
+        
+        # Gemini requires history to start with 'user'. 
+        # If the first item in our memory is 'model', we skip it.
+        if formatted_history and formatted_history[0]['role'] == 'model':
+            formatted_history.pop(0)
 
-        response = model.generate_content(messages)
+        chat_session = model.start_chat(history=formatted_history)
+        response = chat_session.send_message(user_msg)
         ai_text = response.text
+
+        # Log to Sheets
         ts = datetime.now(IST).strftime('%Y-%m-%d %H:%M')
         chat_logs_ws.append_rows([[ts, "User", user_msg], [ts, "AI", ai_text]])
-        return jsonify({"status": "success", "text": ai_text}), 200
-    except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
 
-# --- 🗑️ NEW: DELETE CHAT HISTORY ---
+        return jsonify({"status": "success", "text": ai_text}), 200
+    except Exception as e:
+        print(f"Server Error: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 @app.route('/clear_chat', methods=['DELETE'])
 def clear_chat():
     try:
-        # Fetch all rows
         records = chat_logs_ws.get_all_values()
         if len(records) > 1:
-            # Delete from row 2 to the end (keeps headers in row 1)
             chat_logs_ws.delete_rows(2, len(records))
-            return jsonify({"status": "success", "message": "Chat memory wiped clean."}), 200
-        return jsonify({"status": "success", "message": "Chat already empty."}), 200
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+            return jsonify({"status": "success"}), 200
+        return jsonify({"status": "success"}), 200
+    except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/update_timetable', methods=['PATCH'])
 def update_timetable():
