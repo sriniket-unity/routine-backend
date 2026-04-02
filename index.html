@@ -25,10 +25,8 @@
 
     <header class="fixed top-0 left-0 right-0 z-50 glass-panel">
         <div class="max-w-6xl mx-auto px-6 py-5 flex justify-between items-center">
-            <h1 class="font-display text-xl md:text-2xl font-900 tracking-tighter text-white uppercase italic">
-                ROUTINE<span class="text-white/70 not-italic">FLOW</span>
-            </h1>
-            <nav class="flex space-x-6 md:space-x-10 font-black text-[10px] tracking-[0.3em]">
+            <h1 class="font-display text-xl md:text-2xl font-900 tracking-tighter text-white uppercase italic">ROUTINE<span class="text-white/70 not-italic">FLOW</span></h1>
+            <nav class="flex space-x-6 md:space-x-10 font-black text-[10px] tracking-[0.4em]">
                 <button id="nav-dashboard" onclick="switchTab('dashboard')" class="pb-1 tab-active uppercase">DASHBOARD</button>
                 <button id="nav-insights" onclick="switchTab('insights')" class="pb-1 tab-inactive uppercase">INSIGHTS</button>
             </nav>
@@ -36,7 +34,6 @@
     </header>
 
     <main class="pt-32 md:pt-40 pb-12 px-6 max-w-6xl mx-auto min-h-screen">
-        
         <section id="view-dashboard" class="space-y-16 md:space-y-24">
             <div class="grid grid-cols-1 md:grid-cols-3 gap-8 items-center">
                 <div class="zone-panel flex flex-col space-y-1">
@@ -62,14 +59,14 @@
             <div class="flex flex-col items-center space-y-10">
                 <div id="main-timer" class="font-mono text-5xl md:text-[10rem] font-800 tracking-tighter text-white timer-glow leading-none">00h:00m:00s</div>
                 <div class="flex flex-col sm:flex-row gap-4 w-full sm:w-auto px-4">
-                    <button onclick="handleCheckIn()" class="bg-white text-black font-black px-12 py-4 rounded-2xl tracking-[0.2em] text-xs">CHECK-IN</button>
-                    <button onclick="handleCheckOut()" class="bg-card text-white border border-white/20 font-black px-12 py-4 rounded-2xl tracking-[0.2em] text-xs">CHECK-OUT</button>
+                    <button onclick="handleCheckIn()" class="bg-white text-black font-black px-12 py-4 rounded-2xl tracking-[0.2em] text-xs uppercase">CHECK-IN</button>
+                    <button onclick="handleCheckOut()" class="bg-card text-white border border-white/20 font-black px-12 py-4 rounded-2xl tracking-[0.2em] text-xs uppercase">CHECK-OUT</button>
                 </div>
             </div>
         </section>
 
         <section id="view-insights" class="hidden space-y-12">
-            <h2 class="text-white text-2xl md:text-3xl font-black uppercase">Strategy <span class="text-white/20">Engine</span></h2>
+            <h2 class="text-white text-2xl md:text-3xl font-black uppercase tracking-tight">Strategy <span class="text-white/20">Engine</span></h2>
             <div id="insights-grid" class="grid grid-cols-1 md:grid-cols-2 gap-8"></div>
         </section>
     </main>
@@ -82,7 +79,6 @@
 
     <script>
         const BackendAPI = "https://routine-backend-7yn2.onrender.com";
-        // Fixed: Added allActivities to AppState to correctly track original durations
         let AppState = { currentActivity: null, allActivities: [], timerSeconds: 0, totalSeconds: 0, timerState: 'READY', timerInterval: null };
         let lastUpdate = { activity: null, originalVal: null };
 
@@ -105,29 +101,23 @@
                     const now = new Date();
                     const curIST = now.toLocaleTimeString('en-US', { hour12: true, hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' });
                     const curMin = parseTimeToMinutes(curIST);
-                    
                     let idx = result.data.findIndex(i => {
                         const [s, e] = i.Time.split('-').map(parseTimeToMinutes);
                         return e < s ? (curMin >= s || curMin <= e) : (curMin >= s && curMin <= e);
                     });
                     if(idx === -1) idx = 0;
-
                     const data = result.data[idx];
                     const prev = result.data[idx-1] || result.data[result.data.length-1];
                     const next = result.data[idx+1] || result.data[0];
-
-                    AppState.currentActivity = data;
                     document.getElementById('current-activity').innerText = data.Activity;
                     const totalHrs = parseFloat(data.Duration) || 1;
                     AppState.totalSeconds = Math.round(totalHrs * 3600);
                     AppState.timerSeconds = AppState.totalSeconds;
                     document.getElementById('activity-total').innerText = `${totalHrs.toFixed(1)}h`;
-                    
                     document.getElementById('prev-activity').innerText = prev.Activity;
                     document.getElementById('prev-progress').innerText = `${parseFloat(prev.Duration).toFixed(1)}h / ${parseFloat(prev.Duration).toFixed(1)}h`;
                     document.getElementById('next-activity').innerText = next.Activity;
                     document.getElementById('next-total').innerText = `0.0h / ${parseFloat(next.Duration).toFixed(1)}h`;
-                    
                     updateTimerDisplay();
                 }
             } finally { if(document.getElementById('loading-state')) document.getElementById('loading-state').remove(); }
@@ -166,28 +156,36 @@
                 const result = await res.json();
                 if (result.status === "success" && result.analysis) {
                     const i = result.analysis;
-                    
-                    // Fixed: Look up the actual original duration of the target activity
                     const targetActivity = AppState.allActivities.find(a => a.Activity === i.action_target);
-                    const currentDuration = targetActivity ? targetActivity.Duration : "Unknown";
-                    
-                    renderInsightCard(i.action_target, i.new_val, currentDuration, i.title, i.message);
+                    // Ensure we have clean duration values
+                    const originalVal = targetActivity ? targetActivity.Duration : "0h";
+                    renderInsightCard(i.action_target, i.new_val, originalVal, i.title, i.message);
                 } else { grid.innerHTML = '<p class="col-span-full text-center text-white/20 text-[10px] uppercase">Need 3+ Logs to Start Analysis</p>'; }
             } catch (e) { grid.innerHTML = '<p class="col-span-full text-center text-debt text-[10px] font-black uppercase">Strategy Engine Offline</p>'; }
         }
 
         function renderInsightCard(activity, newVal, originalVal, title, message, showUndo = false) {
             const grid = document.getElementById('insights-grid');
+            // FIXED: HUMAN-READABLE ACTION MAPPING
+            const displayOriginal = originalVal.toLowerCase().includes('h') ? originalVal : `${originalVal}h`;
+            const displayNew = newVal.toLowerCase().includes('h') ? newVal : `${newVal}h`;
+
             grid.innerHTML = `
-                <div class="bg-card border border-white/10 p-8 rounded-[2.5rem] flex flex-col space-y-6">
-                    <h4 class="text-white text-xl font-black uppercase italic">${title}</h4>
-                    <p class="text-white/50 text-sm font-medium leading-relaxed">${message}</p>
+                <div class="bg-card border border-white/10 p-8 rounded-[2.5rem] flex flex-col space-y-6 animate-in fade-in zoom-in duration-500">
+                    <div class="flex flex-col space-y-2">
+                        <span class="text-sage text-[10px] font-black tracking-[0.5em] uppercase">AI Optimization</span>
+                        <h4 class="text-white font-display text-xl font-black uppercase italic tracking-tight">${title}</h4>
+                    </div>
+                    
+                    <p class="text-white/50 text-sm font-medium leading-relaxed italic">
+                        "${message}"
+                    </p>
+
                     <div class="pt-6 border-t border-white/5">
-                        ${!showUndo ? `
-                            <button onclick="applyStrategy('${activity}', '${newVal}', '${originalVal}')" class="w-full py-4 bg-white text-black rounded-2xl font-black text-[10px] uppercase tracking-widest">Apply Strategy</button>
-                        ` : `
-                            <button onclick="undoStrategy()" class="w-full py-4 bg-card text-white border border-white/20 rounded-2xl font-black text-[10px] uppercase tracking-widest">Undo Changes</button>
-                        `}
+                        <button onclick="${!showUndo ? `applyStrategy('${activity}', '${newVal}', '${originalVal}')` : `undoStrategy()`}" 
+                            class="w-full py-5 ${!showUndo ? 'bg-white text-black' : 'bg-card text-white border border-white/20'} rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] hover:scale-[1.02] active:scale-95 transition-all shadow-xl">
+                            ${!showUndo ? `ADJUST ${activity}: ${displayOriginal} ➔ ${displayNew}` : `REVERT ${activity}: ${displayNew} ➔ ${displayOriginal}`}
+                        </button>
                     </div>
                 </div>`;
         }
@@ -201,7 +199,7 @@
             });
             if(res.ok) { 
                 lastUpdate = { activity: act, originalVal: orig }; 
-                renderInsightCard(act, newVal, orig, "Updated", "Your schedule has been optimized.", true);
+                renderInsightCard(act, newVal, orig, "ADJUSTMENT LIVE", "Your schedule has been successfully updated in the database.", true);
                 showToast('Schedule Synchronized', 'success');
             }
         }
@@ -232,7 +230,7 @@
         function showToast(m, t) {
             const container = document.getElementById('toast-container');
             const toast = document.createElement('div');
-            toast.className = `px-8 py-5 rounded-3xl glass-panel border border-white/10 text-[10px] font-black uppercase tracking-widest shadow-2xl`;
+            toast.className = `px-8 py-5 rounded-3xl glass-panel border border-white/10 text-[10px] font-black uppercase tracking-widest shadow-2xl animate-in slide-in-from-right-10`;
             toast.innerText = m;
             container.appendChild(toast);
             setTimeout(() => toast.remove(), 4000);
