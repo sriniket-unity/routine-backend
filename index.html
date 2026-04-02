@@ -39,20 +39,20 @@
                 <div class="zone-panel flex flex-col space-y-1">
                     <span class="text-[10px] font-black tracking-widest text-white/30 uppercase">Previous</span>
                     <h3 id="prev-activity" class="text-white text-sm font-black uppercase">---</h3>
-                    <span id="prev-progress" class="text-white/50 font-mono text-[10px]">0.0h / 0.0h</span>
+                    <span id="prev-progress" class="text-white/50 font-mono text-[10px]">0.00h / 0.00h</span>
                 </div>
                 <div class="flex flex-col items-center space-y-4">
                     <span id="current-activity" class="text-white text-sm font-black tracking-[0.2em] px-8 py-3 rounded-full border-2 border-white/20 bg-black text-center min-w-[160px] uppercase">---</span>
                     <div class="flex items-baseline space-x-2 font-mono">
-                        <span id="activity-progress" class="text-white text-2xl md:text-3xl font-black">0.0h</span>
+                        <span id="activity-progress" class="text-white text-2xl md:text-3xl font-black">0.00h</span>
                         <span class="text-white/20 text-lg">/</span>
-                        <span id="activity-total" class="text-white/60 text-sm font-bold">0.0h</span>
+                        <span id="activity-total" class="text-white/60 text-sm font-bold">0.00h</span>
                     </div>
                 </div>
                 <div class="zone-panel border-l-2 md:border-l flex flex-col space-y-1 items-end md:items-start text-right md:text-left">
                     <span class="text-[10px] font-black tracking-widest text-white/30 uppercase">Next</span>
                     <h3 id="next-activity" class="text-white text-sm font-black uppercase">---</h3>
-                    <span id="next-total" class="text-white/30 font-mono text-[10px]">0.0h / 0.0h</span>
+                    <span id="next-total" class="text-white/30 font-mono text-[10px]">0.00h / 0.00h</span>
                 </div>
             </div>
 
@@ -109,15 +109,16 @@
                     const data = result.data[idx];
                     const prev = result.data[idx-1] || result.data[result.data.length-1];
                     const next = result.data[idx+1] || result.data[0];
+                    AppState.currentActivity = data;
                     document.getElementById('current-activity').innerText = data.Activity;
                     const totalHrs = parseFloat(data.Duration) || 1;
                     AppState.totalSeconds = Math.round(totalHrs * 3600);
                     AppState.timerSeconds = AppState.totalSeconds;
-                    document.getElementById('activity-total').innerText = `${totalHrs.toFixed(1)}h`;
+                    document.getElementById('activity-total').innerText = `${totalHrs.toFixed(2)}h`;
                     document.getElementById('prev-activity').innerText = prev.Activity;
-                    document.getElementById('prev-progress').innerText = `${parseFloat(prev.Duration).toFixed(1)}h / ${parseFloat(prev.Duration).toFixed(1)}h`;
+                    document.getElementById('prev-progress').innerText = `${parseFloat(prev.Duration).toFixed(2)}h / ${parseFloat(prev.Duration).toFixed(2)}h`;
                     document.getElementById('next-activity').innerText = next.Activity;
-                    document.getElementById('next-total').innerText = `0.0h / ${parseFloat(next.Duration).toFixed(1)}h`;
+                    document.getElementById('next-total').innerText = `0.00h / ${parseFloat(next.Duration).toFixed(2)}h`;
                     updateTimerDisplay();
                 }
             } finally { if(document.getElementById('loading-state')) document.getElementById('loading-state').remove(); }
@@ -129,7 +130,7 @@
             const m = Math.floor((abs%3600)/60).toString().padStart(2,'0');
             const s = (abs%60).toString().padStart(2,'0');
             document.getElementById('main-timer').innerText = `${h}h:${m}m:${s}s`;
-            document.getElementById('activity-progress').innerText = `${Math.max(0, (AppState.totalSeconds - AppState.timerSeconds)/3600).toFixed(1)}h`;
+            document.getElementById('activity-progress').innerText = `${Math.max(0, (AppState.totalSeconds - AppState.timerSeconds)/3600).toFixed(2)}h`;
         }
 
         function handleCheckIn() {
@@ -139,25 +140,36 @@
         }
 
         async function handleCheckOut() {
-            const dur = Math.floor((AppState.totalSeconds - AppState.timerSeconds)/60);
+            clearInterval(AppState.timerInterval);
+            
+            // --- 🛠️ V4.1 LOGIC: ALL UNITS IN DECIMAL HOURS ---
+            const plannedHrs = parseFloat(AppState.currentActivity.Duration) || 0;
+            const elapsedSecs = AppState.totalSeconds - AppState.timerSeconds;
+            const actualHrs = parseFloat((elapsedSecs / 3600).toFixed(2));
+            const debtHrs = parseFloat(Math.max(0, plannedHrs - actualHrs).toFixed(2));
+
             await fetch(`${BackendAPI}/log_session`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ activity: AppState.currentActivity.Activity, planned_duration: AppState.currentActivity.Duration, actual_duration: dur })
+                body: JSON.stringify({ 
+                    activity: AppState.currentActivity.Activity, 
+                    planned_duration: plannedHrs, 
+                    actual_duration: actualHrs, 
+                    time_debt: debtHrs 
+                })
             });
             location.reload();
         }
 
         async function fetchInsights() {
             const grid = document.getElementById('insights-grid');
-            grid.innerHTML = '<div class="col-span-full py-12 text-white/20 text-center animate-pulse text-[10px] uppercase tracking-widest">Engine Connecting...</div>';
+            grid.innerHTML = '<div class="col-span-full py-12 text-white/20 text-center animate-pulse text-[10px] uppercase">Engine Connecting...</div>';
             try {
                 const res = await fetch(`${BackendAPI}/analyze_patterns`);
                 const result = await res.json();
                 if (result.status === "success" && result.analysis) {
                     const i = result.analysis;
                     const targetActivity = AppState.allActivities.find(a => a.Activity === i.action_target);
-                    // Ensure we have clean duration values
                     const originalVal = targetActivity ? targetActivity.Duration : "0h";
                     renderInsightCard(i.action_target, i.new_val, originalVal, i.title, i.message);
                 } else { grid.innerHTML = '<p class="col-span-full text-center text-white/20 text-[10px] uppercase">Need 3+ Logs to Start Analysis</p>'; }
@@ -166,7 +178,6 @@
 
         function renderInsightCard(activity, newVal, originalVal, title, message, showUndo = false) {
             const grid = document.getElementById('insights-grid');
-            // FIXED: HUMAN-READABLE ACTION MAPPING
             const displayOriginal = originalVal.toLowerCase().includes('h') ? originalVal : `${originalVal}h`;
             const displayNew = newVal.toLowerCase().includes('h') ? newVal : `${newVal}h`;
 
@@ -176,14 +187,10 @@
                         <span class="text-sage text-[10px] font-black tracking-[0.5em] uppercase">AI Optimization</span>
                         <h4 class="text-white font-display text-xl font-black uppercase italic tracking-tight">${title}</h4>
                     </div>
-                    
-                    <p class="text-white/50 text-sm font-medium leading-relaxed italic">
-                        "${message}"
-                    </p>
-
+                    <p class="text-white/50 text-sm font-medium leading-relaxed italic">"${message}"</p>
                     <div class="pt-6 border-t border-white/5">
                         <button onclick="${!showUndo ? `applyStrategy('${activity}', '${newVal}', '${originalVal}')` : `undoStrategy()`}" 
-                            class="w-full py-5 ${!showUndo ? 'bg-white text-black' : 'bg-card text-white border border-white/20'} rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] hover:scale-[1.02] active:scale-95 transition-all shadow-xl">
+                            class="w-full py-5 ${!showUndo ? 'bg-white text-black' : 'bg-card text-white border border-white/20'} rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] active:scale-95 transition-all">
                             ${!showUndo ? `ADJUST ${activity}: ${displayOriginal} ➔ ${displayNew}` : `REVERT ${activity}: ${displayNew} ➔ ${displayOriginal}`}
                         </button>
                     </div>
@@ -199,7 +206,7 @@
             });
             if(res.ok) { 
                 lastUpdate = { activity: act, originalVal: orig }; 
-                renderInsightCard(act, newVal, orig, "ADJUSTMENT LIVE", "Your schedule has been successfully updated in the database.", true);
+                renderInsightCard(act, newVal, orig, "ADJUSTMENT LIVE", "Database synchronized successfully.", true);
                 showToast('Schedule Synchronized', 'success');
             }
         }
