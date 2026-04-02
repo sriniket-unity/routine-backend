@@ -36,7 +36,6 @@
     </header>
 
     <main class="pt-32 md:pt-40 pb-12 px-6 max-w-6xl mx-auto min-h-screen">
-        
         <section id="view-dashboard" class="space-y-16 md:space-y-24">
             <div class="grid grid-cols-1 md:grid-cols-3 gap-8 items-center">
                 <div class="zone-panel flex flex-col space-y-1">
@@ -83,7 +82,9 @@
     <script>
         const BackendAPI = "https://routine-backend-7yn2.onrender.com";
         let AppState = { currentActivity: null, allActivities: [], timerSeconds: 0, totalSeconds: 0, timerState: 'READY', timerInterval: null };
-        let lastUpdate = { activity: null, originalVal: null };
+        
+        // --- 🛠️ V4.4 FIX: Check LocalStorage for pending Undo ---
+        let lastUpdate = JSON.parse(localStorage.getItem('routine_last_update')) || { activity: null, originalVal: null };
 
         document.addEventListener('DOMContentLoaded', fetchSchedule);
 
@@ -112,19 +113,16 @@
                     const data = result.data[idx];
                     const prev = result.data[idx-1] || result.data[result.data.length-1];
                     const next = result.data[idx+1] || result.data[0];
-
                     AppState.currentActivity = data;
                     document.getElementById('current-activity').innerText = data.Activity;
                     const totalHrs = parseFloat(data.Duration) || 1;
                     AppState.totalSeconds = Math.round(totalHrs * 3600);
                     AppState.timerSeconds = AppState.totalSeconds;
                     document.getElementById('activity-total').innerText = `${totalHrs.toFixed(2)}h`;
-                    
                     document.getElementById('prev-activity').innerText = prev.Activity;
                     document.getElementById('prev-progress').innerText = `${parseFloat(prev.Duration).toFixed(2)}h / ${parseFloat(prev.Duration).toFixed(2)}h`;
                     document.getElementById('next-activity').innerText = next.Activity;
                     document.getElementById('next-total').innerText = `0.00h / ${parseFloat(next.Duration).toFixed(2)}h`;
-                    
                     updateTimerDisplay();
                 }
             } finally { if(document.getElementById('loading-state')) document.getElementById('loading-state').remove(); }
@@ -151,16 +149,10 @@
             const elapsedSecs = AppState.totalSeconds - AppState.timerSeconds;
             const actualHrs = parseFloat((elapsedSecs / 3600).toFixed(2));
             const debtHrs = parseFloat(Math.max(0, plannedHrs - actualHrs).toFixed(2));
-
             await fetch(`${BackendAPI}/log_session`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ 
-                    activity: AppState.currentActivity.Activity, 
-                    planned_duration: plannedHrs, 
-                    actual_duration: actualHrs, 
-                    time_debt: debtHrs 
-                })
+                body: JSON.stringify({ activity: AppState.currentActivity.Activity, planned_duration: plannedHrs, actual_duration: actualHrs, time_debt: debtHrs })
             });
             location.reload();
         }
@@ -173,22 +165,23 @@
                 const result = await res.json();
                 if (result.status === "success" && result.analysis) {
                     const i = result.analysis;
-                    
-                    // Case-insensitive lookup for UI consistency
-                    const targetActivity = AppState.allActivities.find(a => 
-                        a.Activity.trim().toLowerCase() === i.action_target.trim().toLowerCase()
-                    );
+                    const targetActivity = AppState.allActivities.find(a => a.Activity.trim().toLowerCase() === i.action_target.trim().toLowerCase());
                     const originalVal = targetActivity ? targetActivity.Duration : "Unknown";
                     
-                    renderInsightCard(i.action_target, i.new_val, originalVal, i.title, i.message);
-                } else { grid.innerHTML = '<p class="col-span-full text-center text-white/20 text-[10px] uppercase">Need 3+ Logs for Analysis</p>'; }
-            } catch (e) { grid.innerHTML = '<p class="col-span-full text-center text-debt text-[10px] font-black uppercase">Strategy Engine Offline</p>'; }
+                    // --- 🛠️ V4.4 Logic: If we have an active undo, show the 'Adjustment Live' card ---
+                    if (lastUpdate.activity && lastUpdate.activity.toLowerCase() === i.action_target.toLowerCase()) {
+                        renderInsightCard(i.action_target, i.new_val, lastUpdate.originalVal, "ADJUSTMENT LIVE", "Database synchronized successfully.", true);
+                    } else {
+                        renderInsightCard(i.action_target, i.new_val, originalVal, i.title, i.message);
+                    }
+                } else { grid.innerHTML = '<p class="col-span-full text-center text-white/20 text-[10px] uppercase">Need more logs for Analysis</p>'; }
+            } catch (e) { grid.innerHTML = '<p class="col-span-full text-center text-debt text-[10px] font-black uppercase">Engine Offline</p>'; }
         }
 
         function renderInsightCard(activity, newVal, originalVal, title, message, showUndo = false) {
             const grid = document.getElementById('insights-grid');
-            const displayOriginal = originalVal.toLowerCase().includes('h') ? originalVal : `${originalVal}h`;
-            const displayNew = newVal.toLowerCase().includes('h') ? newVal : `${newVal}h`;
+            const displayOriginal = originalVal.toString().toLowerCase().includes('h') ? originalVal : `${originalVal}h`;
+            const displayNew = newVal.toString().toLowerCase().includes('h') ? newVal : `${newVal}h`;
 
             grid.innerHTML = `
                 <div class="bg-card border border-white/10 p-8 rounded-[2.5rem] flex flex-col space-y-6 animate-in fade-in zoom-in duration-500">
@@ -214,35 +207,37 @@
                     headers: {'Content-Type': 'application/json'}, 
                     body: JSON.stringify({ activity: act, new_val: newVal }) 
                 });
-                
                 const result = await res.json();
-
                 if(res.ok) { 
                     lastUpdate = { activity: act, originalVal: orig }; 
+                    localStorage.setItem('routine_last_update', JSON.stringify(lastUpdate));
                     renderInsightCard(act, newVal, orig, "ADJUSTMENT LIVE", "Database synchronized successfully.", true);
                     showToast('Schedule Synchronized', 'success');
-                } else {
-                    // V4.3 ERROR REPORTING
-                    showToast(`Error: ${result.message}`, 'error');
-                }
-            } catch (e) {
-                showToast("Network Error: Check Connection", "error");
-            }
+                } else { showToast(`Error: ${result.message}`, 'error'); }
+            } catch (e) { showToast("Connection Failed", "error"); }
         }
 
         async function undoStrategy() {
             showToast('Reverting...', 'info');
             try {
+                // --- 🛠️ V4.4 FIX: Improved Error Handling in Revert ---
                 const res = await fetch(`${BackendAPI}/update_timetable`, { 
                     method: 'PATCH', 
                     headers: {'Content-Type': 'application/json'}, 
                     body: JSON.stringify({ activity: lastUpdate.activity, new_val: lastUpdate.originalVal }) 
                 });
+                
+                const result = await res.json();
+
                 if(res.ok) {
                     showToast("Restored Original Schedule", "success");
+                    localStorage.removeItem('routine_last_update');
+                    lastUpdate = { activity: null, originalVal: null };
                     setTimeout(() => location.reload(), 1500);
+                } else {
+                    showToast(`Revert Failed: ${result.message}`, 'error');
                 }
-            } catch (e) { showToast("Undo Failed", "error"); }
+            } catch (e) { showToast("Network Error during Revert", "error"); }
         }
 
         function switchTab(view) {
@@ -261,7 +256,6 @@
         function showToast(m, t) {
             const container = document.getElementById('toast-container');
             const toast = document.createElement('div');
-            // Dynamic styling for errors
             const isError = t === 'error';
             toast.className = `px-8 py-5 rounded-3xl glass-panel border ${isError ? 'toast-error' : 'border-white/10'} text-[10px] font-black uppercase tracking-widest shadow-2xl animate-in slide-in-from-right-10`;
             toast.innerText = m;
