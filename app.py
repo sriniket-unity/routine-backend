@@ -40,9 +40,9 @@ init_sheets()
 # --- ⚡ CACHE LAYER ---
 analysis_cache = {"data": None, "log_count": 0}
 
-# --- 🛠️ HELPER: TIMESTAMP SANITIZER ---
+# --- 🛠️ HELPERS ---
 def sanitize_ts(ts_str):
-    """Handles cases like '12:0' by padding to '12:00'"""
+    """Normalizes timestamps like '12:0' to '12:00' for parsing."""
     try:
         parts = ts_str.split(' ')
         date_part = parts[0]
@@ -56,7 +56,7 @@ def sanitize_ts(ts_str):
 
 @app.route('/', methods=['GET'])
 def health():
-    return jsonify({"service": "Routine Flow Backend", "version": "4.6.4", "status": "Ready"}), 200
+    return jsonify({"service": "Routine Flow Architect", "version": "5.0", "status": "Ready"}), 200
 
 @app.route('/get_schedule', methods=['GET'])
 def get_schedule():
@@ -73,7 +73,7 @@ def log_session():
     try:
         d = request.json
         ts = datetime.now(IST).strftime('%Y-%m-%d %H:%M')
-        # Matching your sheet headers exactly
+        # Matches your exact sheet headers: Timestamp, Activity, Planned (hrs), Actual (hrs), Time Debt
         logs_ws.append_row([ts, d.get('activity'), d.get('planned_duration'), d.get('actual_duration'), d.get('time_debt', 0)])
         return jsonify({"status": "success"}), 200
     except Exception as e:
@@ -83,22 +83,17 @@ def log_session():
 def get_analytics():
     try:
         all_logs = logs_ws.get_all_records()
-        if not all_logs:
-            return jsonify({"status": "success", "overall": None, "week": None}), 200
+        if not all_logs: return jsonify({"status": "success", "overall": None, "week": None}), 200
 
         now = datetime.now(IST)
         start_of_week = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
 
         def process_subset(subset):
-            if not subset: return {"study": 0, "adherence": 0, "debt": 0, "chart": [0]*7}
-            
-            # --- 🛠️ V4.6.4 FIX: Match EXACT Sheet Headers ---
+            if not subset: return {"study": 0, "adherence": 0, "debt": 0, "chart": [0.0]*7}
             total_study = sum(float(r.get('Actual (hrs)') or 0) for r in subset)
             total_debt = sum(float(r.get('Time Debt') or 0) for r in subset)
-            
             completed = sum(1 for r in subset if float(r.get('Actual (hrs)') or 0) > 0)
             adherence = round((completed / len(subset)) * 100)
-            
             chart = [0.0] * 7
             for r in subset:
                 try:
@@ -106,40 +101,12 @@ def get_analytics():
                     dt = datetime.strptime(clean_ts, '%Y-%m-%d %H:%M')
                     chart[dt.weekday()] += float(r.get('Actual (hrs)') or 0)
                 except: continue
-            
             return {"study": round(total_study, 1), "adherence": adherence, "debt": round(total_debt, 1), "chart": chart}
 
         overall_data = process_subset(all_logs)
-        week_logs = []
-        for r in all_logs:
-            try:
-                clean_ts = sanitize_ts(r.get('Timestamp', ''))
-                log_dt = IST.localize(datetime.strptime(clean_ts, '%Y-%m-%d %H:%M'))
-                if log_dt >= start_of_week: week_logs.append(r)
-            except: continue
+        week_logs = [r for r in all_logs if IST.localize(datetime.strptime(sanitize_ts(r.get('Timestamp', '')), '%Y-%m-%d %H:%M')) >= start_of_week]
         week_data = process_subset(week_logs)
-
         return jsonify({"status": "success", "overall": overall_data, "week": week_data}), 200
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-@app.route('/analyze_patterns', methods=['GET'])
-def analyze_patterns():
-    global analysis_cache
-    try:
-        all_logs = logs_ws.get_all_values()
-        current_count = len(all_logs)
-        if analysis_cache["data"] and current_count == analysis_cache["log_count"]:
-            return jsonify({"status": "success", "analysis": analysis_cache["data"], "source": "cache"}), 200
-        if current_count < 5: 
-            return jsonify({"status": "success", "analysis": None}), 200
-        headers = all_logs[1] 
-        recs = [dict(zip(headers, row)) for row in all_logs[-10:]]
-        prompt = f"Analyze these logs for Sriniket: {json.dumps(recs)}. dur in DECIMAL HRS. Identify ONE trend. Return ONLY JSON: {{\"title\":\"...\",\"message\":\"...\",\"action_target\":\"...\",\"new_val\":\"...\"}}"
-        response = model.generate_content(prompt)
-        analysis_data = json.loads(response.text.strip().replace("```json", "").replace("```", ""))
-        analysis_cache = {"data": analysis_data, "log_count": current_count}
-        return jsonify({"status": "success", "analysis": analysis_data}), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -152,19 +119,67 @@ def update_timetable():
         if cell:
             timetable_ws.update_cell(cell.row, cell.col + 1, data.get('new_val'))
             return jsonify({"status": "success"}), 200
-        return jsonify({"status": "error", "message": "Not found"}), 404
+        return jsonify({"status": "error", "message": "Activity not found"}), 404
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/clear_logs', methods=['DELETE'])
-def clear_logs():
+# --- 🤖 NEW: THE CONVERSATIONAL CHAT ENGINE ---
+@app.route('/chat', methods=['POST'])
+def chat():
+    try:
+        d = request.json
+        user_msg = d.get('message')
+        history = d.get('history', [])
+
+        # Fetch current context for the AI
+        timetable = timetable_ws.get_all_records()
+        logs = logs_ws.get_all_records()[-10:] # Context limited to last 10 logs
+
+        system_prompt = f"""
+        You are 'Routine Flow Architect'. You assist Sriniket.
+        SRINIKET'S CURRENT STATUS: Recovering from a bike accident (minor leg swelling). 
+        You MUST prioritize physical rest when he mentions pain or injuries.
+        
+        CURRENT TIMETABLE: {json.dumps(timetable)}
+        RECENT PERFORMANCE: {json.dumps(logs)}
+        
+        GOALS:
+        1. Answer questions like 'Did I do good?' by analyzing the 'Actual (hrs)' vs 'Planned (hrs)'.
+        2. If he mentions an injury (like a new arm injury), suggest reducing session durations.
+        3. If you suggest a specific schedule change, include this JSON at the end of your response:
+           ACTION_RECS: {{"action_target": "Exact Activity Name", "new_val": "0.5h", "reason": "Shortened for recovery"}}
+        
+        Keep it supportive, brief, and authentic.
+        """
+
+        messages = [{"role": "user", "parts": [system_prompt]}]
+        for h in history:
+            role = "user" if h['type'] == 'user' else "model"
+            messages.append({"role": role, "parts": [h['text']]})
+        messages.append({"role": "user", "parts": [user_msg]})
+
+        response = model.generate_content(messages)
+        return jsonify({"status": "success", "text": response.text}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/analyze_patterns', methods=['GET'])
+def analyze_patterns():
     global analysis_cache
     try:
-        records = logs_ws.get_all_values()
-        if len(records) > 1:
-            logs_ws.delete_rows(2, len(records))
-            analysis_cache = {"data": None, "log_count": 0}
-        return jsonify({"status": "success"}), 200
+        all_logs = logs_ws.get_all_values()
+        if analysis_cache["data"] and len(all_logs) == analysis_cache["log_count"]:
+            return jsonify({"status": "success", "analysis": analysis_cache["data"]}), 200
+        if len(all_logs) < 5: return jsonify({"status": "success", "analysis": None}), 200
+        
+        headers = all_logs[1] 
+        recs = [dict(zip(headers, row)) for row in all_logs[-10:]]
+        prompt = f"Analyze these logs for Sriniket: {json.dumps(recs)}. Focus on 'Actual (hrs)' vs 'Planned (hrs)'. Return ONLY JSON: {{\"title\":\"...\",\"message\":\"...\",\"action_target\":\"...\",\"new_val\":\"...\"}}"
+        
+        response = model.generate_content(prompt)
+        data = json.loads(response.text.strip().replace("```json", "").replace("```", ""))
+        analysis_cache = {"data": data, "log_count": len(all_logs)}
+        return jsonify({"status": "success", "analysis": data}), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
