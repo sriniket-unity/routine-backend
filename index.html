@@ -19,6 +19,7 @@
         .zone-panel { border-left: 2px solid rgba(255,255,255,0.1); padding-left: 1rem; }
         .tab-active { color: white !important; border-bottom: 2px solid white !important; }
         .tab-inactive { color: rgba(255,255,255,0.3) !important; border-bottom: 2px solid transparent !important; }
+        button:active { transform: scale(0.98); }
     </style>
 </head>
 <body class="font-sans">
@@ -34,6 +35,7 @@
     </header>
 
     <main class="pt-32 md:pt-40 pb-12 px-6 max-w-6xl mx-auto min-h-screen">
+        
         <section id="view-dashboard" class="space-y-16 md:space-y-24">
             <div class="grid grid-cols-1 md:grid-cols-3 gap-8 items-center">
                 <div class="zone-panel flex flex-col space-y-1">
@@ -41,8 +43,8 @@
                     <h3 id="prev-activity" class="text-white text-sm font-black uppercase">---</h3>
                     <span id="prev-progress" class="text-white/50 font-mono text-[10px]">0.00h / 0.00h</span>
                 </div>
-                <div class="flex flex-col items-center space-y-4">
-                    <span id="current-activity" class="text-white text-sm font-black tracking-[0.2em] px-8 py-3 rounded-full border-2 border-white/20 bg-black text-center min-w-[160px] uppercase">---</span>
+                <div class="flex flex-col items-center space-y-4 text-center">
+                    <span id="current-activity" class="text-white text-sm font-black tracking-[0.2em] px-8 py-3 rounded-full border-2 border-white/20 bg-black min-w-[180px] uppercase">---</span>
                     <div class="flex items-baseline space-x-2 font-mono">
                         <span id="activity-progress" class="text-white text-2xl md:text-3xl font-black">0.00h</span>
                         <span class="text-white/20 text-lg">/</span>
@@ -109,16 +111,19 @@
                     const data = result.data[idx];
                     const prev = result.data[idx-1] || result.data[result.data.length-1];
                     const next = result.data[idx+1] || result.data[0];
+
                     AppState.currentActivity = data;
                     document.getElementById('current-activity').innerText = data.Activity;
                     const totalHrs = parseFloat(data.Duration) || 1;
                     AppState.totalSeconds = Math.round(totalHrs * 3600);
                     AppState.timerSeconds = AppState.totalSeconds;
                     document.getElementById('activity-total').innerText = `${totalHrs.toFixed(2)}h`;
+                    
                     document.getElementById('prev-activity').innerText = prev.Activity;
                     document.getElementById('prev-progress').innerText = `${parseFloat(prev.Duration).toFixed(2)}h / ${parseFloat(prev.Duration).toFixed(2)}h`;
                     document.getElementById('next-activity').innerText = next.Activity;
                     document.getElementById('next-total').innerText = `0.00h / ${parseFloat(next.Duration).toFixed(2)}h`;
+                    
                     updateTimerDisplay();
                 }
             } finally { if(document.getElementById('loading-state')) document.getElementById('loading-state').remove(); }
@@ -141,8 +146,6 @@
 
         async function handleCheckOut() {
             clearInterval(AppState.timerInterval);
-            
-            // --- 🛠️ V4.1 LOGIC: ALL UNITS IN DECIMAL HOURS ---
             const plannedHrs = parseFloat(AppState.currentActivity.Duration) || 0;
             const elapsedSecs = AppState.totalSeconds - AppState.timerSeconds;
             const actualHrs = parseFloat((elapsedSecs / 3600).toFixed(2));
@@ -163,16 +166,21 @@
 
         async function fetchInsights() {
             const grid = document.getElementById('insights-grid');
-            grid.innerHTML = '<div class="col-span-full py-12 text-white/20 text-center animate-pulse text-[10px] uppercase">Engine Connecting...</div>';
+            grid.innerHTML = '<div class="col-span-full py-12 text-white/20 text-center animate-pulse text-[10px] uppercase">Connecting to Engine...</div>';
             try {
                 const res = await fetch(`${BackendAPI}/analyze_patterns`);
                 const result = await res.json();
                 if (result.status === "success" && result.analysis) {
                     const i = result.analysis;
-                    const targetActivity = AppState.allActivities.find(a => a.Activity === i.action_target);
-                    const originalVal = targetActivity ? targetActivity.Duration : "0h";
+                    
+                    // --- 🛠️ V4.2 FIX: Case-Insensitive activity lookup ---
+                    const targetActivity = AppState.allActivities.find(a => 
+                        a.Activity.trim().toLowerCase() === i.action_target.trim().toLowerCase()
+                    );
+                    const originalVal = targetActivity ? targetActivity.Duration : "Unknown";
+                    
                     renderInsightCard(i.action_target, i.new_val, originalVal, i.title, i.message);
-                } else { grid.innerHTML = '<p class="col-span-full text-center text-white/20 text-[10px] uppercase">Need 3+ Logs to Start Analysis</p>'; }
+                } else { grid.innerHTML = '<p class="col-span-full text-center text-white/20 text-[10px] uppercase">Need more data logs</p>'; }
             } catch (e) { grid.innerHTML = '<p class="col-span-full text-center text-debt text-[10px] font-black uppercase">Strategy Engine Offline</p>'; }
         }
 
@@ -190,7 +198,7 @@
                     <p class="text-white/50 text-sm font-medium leading-relaxed italic">"${message}"</p>
                     <div class="pt-6 border-t border-white/5">
                         <button onclick="${!showUndo ? `applyStrategy('${activity}', '${newVal}', '${originalVal}')` : `undoStrategy()`}" 
-                            class="w-full py-5 ${!showUndo ? 'bg-white text-black' : 'bg-card text-white border border-white/20'} rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] active:scale-95 transition-all">
+                            class="w-full py-5 ${!showUndo ? 'bg-white text-black' : 'bg-card text-white border border-white/20'} rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] transition-all">
                             ${!showUndo ? `ADJUST ${activity}: ${displayOriginal} ➔ ${displayNew}` : `REVERT ${activity}: ${displayNew} ➔ ${displayOriginal}`}
                         </button>
                     </div>
