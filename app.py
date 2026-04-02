@@ -14,7 +14,7 @@ import logging
 app = Flask(__name__)
 CORS(app)
 
-# 📝 Enable Server Logging for Render
+# 📝 Enable Logging
 logging.basicConfig(level=logging.INFO)
 
 # --- 🌍 CONFIGURATION ---
@@ -37,9 +37,12 @@ def init_sheets():
             logs_ws = sheet.worksheet("Logs")
             chat_logs_ws = sheet.worksheet("ChatLogs")
             app.logger.info("✅ Sheets Status: All Systems Operational.")
+            return True
     except Exception as e:
         app.logger.error(f"❌ Sheets Error: {e}")
+        return False
 
+# Initialize on boot
 init_sheets()
 
 # --- 🛠️ HELPERS ---
@@ -54,11 +57,12 @@ def sanitize_ts(ts_str):
 
 @app.route('/', methods=['GET'])
 def health():
-    return jsonify({"service": "Routine Flow Architect", "version": "5.4.4", "status": "Ready"}), 200
+    return jsonify({"service": "Routine Flow Architect", "version": "5.4.5", "status": "Ready"}), 200
 
 @app.route('/get_schedule', methods=['GET'])
 def get_schedule():
     try:
+        if not timetable_ws: init_sheets()
         all_val = timetable_ws.get_all_values()
         headers = [h.strip() for h in all_val[1]] 
         data = [dict(zip(headers, r)) for r in all_val[2:] if any(r)]
@@ -68,6 +72,7 @@ def get_schedule():
 @app.route('/get_analytics', methods=['GET'])
 def get_analytics():
     try:
+        if not logs_ws: init_sheets()
         all_logs = logs_ws.get_all_records()
         if not all_logs: return jsonify({"status": "success", "overall": None, "week": None}), 200
         now = datetime.now(IST)
@@ -87,64 +92,66 @@ def get_analytics():
                 except: continue
             return {"study": round(total_study, 1), "adherence": adherence, "debt": round(total_debt, 1), "chart": chart}
 
-        return jsonify({"status": "success", "overall": process_subset(all_logs), "week": process_subset([r for r in all_logs if IST.localize(datetime.strptime(sanitize_ts(r.get('Timestamp', '')), '%Y-%m-%d %H:%M')) >= start_of_week])}), 200
+        overall = process_subset(all_logs)
+        week_logs = [r for r in all_logs if IST.localize(datetime.strptime(sanitize_ts(r.get('Timestamp', '')), '%Y-%m-%d %H:%M')) >= start_of_week]
+        return jsonify({"status": "success", "overall": overall, "week": process_subset(week_logs)}), 200
     except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
 
+# --- 🤖 THE BULLETPROOF CHAT ENGINE ---
 @app.route('/chat', methods=['POST'])
 def chat():
     try:
-        # Check if sheets are initialized
-        if not chat_logs_ws or not timetable_ws:
-            init_sheets()
+        # Re-init if connection dropped
+        if not chat_logs_ws: init_sheets()
             
         user_msg = request.json.get('message')
         
-        # 1. Faster Context Retrieval
-        timetable = timetable_ws.get_all_records()[-10:] # Reduce size for speed
+        # 1. Fetch Context
+        timetable = timetable_ws.get_all_records()[-15:]
         raw_history = chat_logs_ws.get_all_records()
-        memory = raw_history[-8:] # Optimized history window
+        memory = raw_history[-8:] # Keep history clean
 
-        # 2. Hardened System Instructions
-        system_context = (
+        # 2. Setup System Instruction
+        sys_instr = (
             f"You are 'Routine Flow Architect' for Sriniket. He is recovering from an injury. "
             f"CURRENT TIMETABLE: {json.dumps(timetable)}. "
-            f"RESPONSE RULES: 1. Prioritize rest if pain is mentioned. 2. Use ACTION_RECS: "
-            f"{{\"action_target\": \"...\", \"new_val\": \"...\", \"reason\": \"...\"}} for schedule changes."
+            f"RULES: 1. Prioritize rest. 2. To suggest changes, MUST use ACTION_RECS: "
+            f"{{\"action_target\": \"...\", \"new_val\": \"...\", \"reason\": \"...\"}}"
         )
         
-        # Switch to Gemini 1.5 Flash (Most stable for Render)
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        # 3. Model Initialization (Using Gemini 1.5 Flash)
+        model = genai.GenerativeModel(
+            model_name='gemini-1.5-flash',
+            system_instruction=sys_instr
+        )
 
-        # 3. Secure Role Alternation
-        messages = [{"role": "user", "parts": [system_context]}]
-        
-        # Add 'model' acknowledgement to system context to ensure next is 'user'
-        messages.append({"role": "model", "parts": ["Understood. Architect Engine ready for Sriniket."]})
-        
+        # 4. Hardened Role Alternation Logic
+        # Gemini history MUST start with 'user' and alternate 'user' -> 'model'
+        history = []
         for m in memory:
             role = "user" if m['Role'].lower() == 'user' else "model"
-            # Prevent duplicate roles in sequence
-            if messages and messages[-1]['role'] == role:
+            # Prevent consecutive identical roles
+            if history and history[-1]['role'] == role:
                 continue
-            messages.append({"role": role, "parts": [m['Message']]})
+            history.append({"role": role, "parts": [m['Message']]})
 
-        # Add current message
-        if messages[-1]['role'] == "user":
-             messages.append({"role": "model", "parts": ["Ready for your update."]})
-             
-        messages.append({"role": "user", "parts": [user_msg]})
+        # Ensure history doesn't end with 'user' (because the next send_message is 'user')
+        if history and history[-1]['role'] == "user":
+            history.append({"role": "model", "parts": ["Understood, standing by for your next update."]})
 
-        # 4. Content Generation
-        response = model.generate_content(messages)
+        # 5. Execute Chat
+        chat_session = model.start_chat(history=history)
+        response = chat_session.send_message(user_msg)
         ai_text = response.text
 
-        # 5. Save to Sheets
+        # 6. Save to Sheets
         ts = datetime.now(IST).strftime('%Y-%m-%d %H:%M')
         chat_logs_ws.append_rows([[ts, "User", user_msg], [ts, "AI", ai_text]])
 
         return jsonify({"status": "success", "text": ai_text}), 200
+
     except Exception as e:
-        app.logger.error(f"CHAT_CRASH: {str(e)}")
+        app.logger.error(f"V5.4.5 CRASH: {str(e)}")
         return jsonify({"status": "error", "message": f"QA_DEBUG: {str(e)}"}), 500
 
 @app.route('/log_session', methods=['POST'])
