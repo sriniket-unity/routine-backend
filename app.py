@@ -16,7 +16,6 @@ CORS(app)
 
 # --- 🌍 CONFIGURATION ---
 IST = pytz.timezone('Asia/Kolkata')
-# Initialize with the 2026 SDK standard
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 
 # --- 📊 SHEETS CONNECTION ---
@@ -44,7 +43,7 @@ init_sheets()
 
 @app.route('/', methods=['GET'])
 def health():
-    return jsonify({"service": "Routine Flow Architect", "version": "5.5.2", "status": "Online"}), 200
+    return jsonify({"service": "Routine Flow Architect", "version": "5.5.3", "status": "Online"}), 200
 
 @app.route('/chat', methods=['POST'])
 def chat():
@@ -52,12 +51,12 @@ def chat():
         if not chat_logs_ws: init_sheets()
         user_msg = request.json.get('message')
 
-        # 1. Fetch Schedule (Manual zip to ignore merged headers)
+        # 1. Fetch Schedule (Manual zip to ignore merged Row 1)
         all_tt = timetable_ws.get_all_values()
         tt_headers = [h.strip() for h in all_tt[1] if h.strip()]
         lean_tt = [dict(zip(tt_headers, r)) for r in all_tt[2:] if any(r)][-10:]
 
-        # 2. Fetch History
+        # 2. Fetch History (Manual zip to handle empty columns)
         all_chat = chat_logs_ws.get_all_values()
         memory = []
         if len(all_chat) > 1:
@@ -73,8 +72,8 @@ def chat():
         
         User Input: {user_msg}
         
-        Mandatory Format for Schedule Changes:
-        ACTION_RECS: {{"action_target": "Activity Name", "new_val": "1.0h", "reason": "Reason for change"}}
+        Format for changes:
+        ACTION_RECS: {{"action_target": "Activity Name", "new_val": "1.0h", "reason": "Reason"}}
         """
 
         # 🚀 RESTORED: Gemini 3 Flash
@@ -82,18 +81,17 @@ def chat():
         response = model.generate_content(prompt)
         ai_text = response.text
 
-        # 4. Persistence
+        # 4. Save Interaction
         ts = datetime.now(IST).strftime('%Y-%m-%d %H:%M')
         chat_logs_ws.append_rows([[ts, "User", user_msg], [ts, "AI", ai_text]])
 
         return jsonify({"status": "success", "text": ai_text}), 200
 
     except Exception as e:
-        # Full Traceback for Render Logs
         app.logger.error(traceback.format_exc())
         return jsonify({"status": "error", "message": f"QA_DEBUG: {str(e)}"}), 500
 
-# Other endpoints (get_schedule, log_session, clear_chat, etc.) remain identical
+# Other endpoints (get_schedule, log_session, clear_chat, etc.) remain standard
 @app.route('/get_schedule', methods=['GET'])
 def get_schedule():
     try:
