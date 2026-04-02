@@ -17,7 +17,7 @@ IST = pytz.timezone('Asia/Kolkata')
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 model = genai.GenerativeModel('gemini-3-flash-preview')
 
-# --- 📊 GOOGLE SHEETS CONNECTION ---
+# --- 📊 SHEETS CONNECTION ---
 timetable_ws = None
 logs_ws = None
 
@@ -41,7 +41,7 @@ init_sheets()
 @app.route('/', methods=['GET'])
 def health():
     status = "Ready" if logs_ws else "Error"
-    return jsonify({"service": "Routine Flow Backend", "sheets": status}), 200
+    return jsonify({"service": "Routine Flow Backend", "version": "4.1", "sheets": status}), 200
 
 @app.route('/get_schedule', methods=['GET'])
 def get_schedule():
@@ -55,22 +55,28 @@ def get_schedule():
 
 @app.route('/log_session', methods=['POST'])
 def log_session():
+    """Logs a single session. Units: Decimal Hours."""
     try:
         d = request.json
         ts = datetime.now(IST).strftime('%Y-%m-%d %H:%M')
-        logs_ws.append_row([ts, d.get('activity'), d.get('planned_duration'), d.get('actual_duration'), d.get('time_debt', 0)])
+        logs_ws.append_row([
+            ts, 
+            d.get('activity'), 
+            d.get('planned_duration'), 
+            d.get('actual_duration'), 
+            d.get('time_debt', 0)
+        ])
         return jsonify({"status": "success"}), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-# NEW: Bulk Logging Endpoint
 @app.route('/bulk_log', methods=['POST'])
 def bulk_log():
+    """Batch processing for test data. Units: Decimal Hours."""
     try:
-        data_list = request.json  # Expecting a list []
+        data_list = request.json 
         ts = datetime.now(IST).strftime('%Y-%m-%d %H:%M')
         rows_to_add = []
-        
         for d in data_list:
             rows_to_add.append([
                 ts, 
@@ -79,8 +85,6 @@ def bulk_log():
                 d.get('actual_duration'), 
                 d.get('time_debt', 0)
             ])
-        
-        # Batch update is 5x faster than individual rows
         logs_ws.append_rows(rows_to_add)
         return jsonify({"status": "success", "count": len(rows_to_add)}), 200
     except Exception as e:
@@ -88,13 +92,26 @@ def bulk_log():
 
 @app.route('/analyze_patterns', methods=['GET'])
 def analyze_patterns():
+    """AI Analysis updated for V4.1 to prioritize Hours."""
     try:
         recs = logs_ws.get_all_records()
         if len(recs) < 3: 
             return jsonify({"status": "success", "analysis": None}), 200
         
         log_context = json.dumps(recs[-10:])
-        prompt = f"Analyze these routine logs for Sriniket: {log_context}. Provide ONE performance trend. Return ONLY JSON: {{\"title\":\"...\",\"message\":\"...\",\"action_target\":\"...\",\"new_val\":\"...\"}}"
+        # QA NOTE: The prompt now explicitly forces Gemini to think in HOURS.
+        prompt = f"""
+        Analyze these routine logs for Sriniket: {log_context}. 
+        IMPORTANT: All durations (planned, actual, and debt) are in DECIMAL HOURS.
+        Identify ONE performance trend or optimization. 
+        Return ONLY a JSON object:
+        {{
+            "title": "Insight Title",
+            "message": "Specific advice based on hour-logs",
+            "action_target": "Activity Name",
+            "new_val": "Suggested duration (e.g., 1.0h)"
+        }}
+        """
         response = model.generate_content(prompt)
         clean_text = response.text.strip().replace("```json", "").replace("```", "")
         return jsonify({"status": "success", "analysis": json.loads(clean_text)})
@@ -122,7 +139,7 @@ def clear_logs():
         if len(records) > 1:
             logs_ws.delete_rows(2, len(records))
             return jsonify({"status": "success"}), 200
-        return jsonify({"status": "success", "message": "Already empty"}), 200
+        return jsonify({"status": "success", "message": "Sheet already empty"}), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
