@@ -16,6 +16,7 @@ CORS(app)
 
 # --- 🌍 CONFIGURATION ---
 IST = pytz.timezone('Asia/Kolkata')
+# Setting up the API Key
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 
 # --- 📊 SHEETS CONNECTION ---
@@ -33,7 +34,7 @@ def init_sheets():
             timetable_ws = sheet.worksheet("Timetable")
             logs_ws = sheet.worksheet("Logs")
             chat_logs_ws = sheet.worksheet("ChatLogs")
-            print("✅ Sheets Status: All Systems Operational.")
+            print("✅ Sheets Status: Gemini 3 Systems Operational.")
     except Exception as e:
         print(f"❌ Sheets Error: {e}")
 
@@ -51,30 +52,73 @@ def sanitize_ts(ts_str):
 
 @app.route('/', methods=['GET'])
 def health():
-    return jsonify({"service": "Routine Flow Architect", "version": "5.4.8", "status": "Ready"}), 200
+    return jsonify({"service": "Routine Flow Architect", "version": "5.5.0", "status": "Ready"}), 200
 
 @app.route('/get_schedule', methods=['GET'])
 def get_schedule():
     try:
         if not timetable_ws: init_sheets()
         all_val = timetable_ws.get_all_values()
-        # Row 2 contains headers
+        # Resilient Header Parsing (Row 2)
         headers = [h.strip() for h in all_val[1] if h.strip()] 
         data = [dict(zip(headers, r)) for r in all_val[2:] if any(r)]
         return jsonify({"status": "success", "data": data})
     except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
 
+@app.route('/chat', methods=['POST'])
+def chat():
+    try:
+        if not chat_logs_ws: init_sheets()
+        user_msg = request.json.get('message')
+
+        # 1. Fetch Context (Using the Manual Zip method to avoid 'Empty Header' crash)
+        all_tt = timetable_ws.get_all_values()
+        tt_headers = [h.strip() for h in all_tt[1] if h.strip()]
+        lean_tt = [dict(zip(tt_headers, r)) for r in all_tt[2:] if any(r)][-10:]
+
+        all_chat = chat_logs_ws.get_all_values()
+        memory = []
+        if len(all_chat) > 1:
+            chat_headers = [h.strip() for h in all_chat[0] if h.strip()]
+            memory = [dict(zip(chat_headers, r)) for r in all_chat[1:] if any(r)][-6:]
+
+        # 2. Build Persistent Prompt
+        prompt = f"""
+        You are 'Routine Flow Architect' for Sriniket. Recovering from accident.
+        TIMETABLE: {json.dumps(lean_tt)}
+        HISTORY: {json.dumps(memory)}
+        
+        USER: {user_msg}
+        
+        RULES:
+        1. Use ACTION_RECS: {{"action_target": "...", "new_val": "...", "reason": "..."}} for schedule adjustments.
+        2. Be concise but architect-level precise.
+        """
+
+        # 🚀 RESTORED: Back to the 3-Series model that worked perfectly
+        model = genai.GenerativeModel('gemini-3-flash')
+        response = model.generate_content(prompt)
+        ai_text = response.text
+
+        # 3. Save current interaction to ChatLogs
+        ts = datetime.now(IST).strftime('%Y-%m-%d %H:%M')
+        chat_logs_ws.append_rows([[ts, "User", user_msg], [ts, "AI", ai_text]])
+
+        return jsonify({"status": "success", "text": ai_text}), 200
+
+    except Exception as e:
+        app.logger.error(traceback.format_exc())
+        return jsonify({"status": "error", "message": f"QA_DEBUG: {str(e)}"}), 500
+
+# Keep your other endpoints (get_analytics, clear_chat, etc.) as they were
 @app.route('/get_analytics', methods=['GET'])
 def get_analytics():
     try:
         if not logs_ws: init_sheets()
-        # Manually parse logs to avoid empty header issues
         raw_logs = logs_ws.get_all_values()
         if len(raw_logs) <= 1: return jsonify({"status": "success", "overall": None, "week": None}), 200
-        
         headers = [h.strip() for h in raw_logs[0] if h.strip()]
         all_logs = [dict(zip(headers, r)) for r in raw_logs[1:] if any(r)]
-        
         now = datetime.now(IST)
         start_of_week = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0)
 
@@ -93,52 +137,7 @@ def get_analytics():
             return {"study": round(total_study, 1), "adherence": adherence, "debt": round(total_debt, 1), "chart": chart}
 
         return jsonify({"status": "success", "overall": process_subset(all_logs), "week": process_subset([r for r in all_logs if IST.localize(datetime.strptime(sanitize_ts(r.get('Timestamp', '')), '%Y-%m-%d %H:%M')) >= start_of_week])}), 200
-    except Exception as e: return jsonify({"status": "error", "message": f"Analytics Error: {str(e)}"}), 500
-
-@app.route('/chat', methods=['POST'])
-def chat():
-    try:
-        if not chat_logs_ws: init_sheets()
-        user_msg = request.json.get('message')
-
-        # 1. Resilient Timetable Fetch
-        all_tt = timetable_ws.get_all_values()
-        tt_headers = [h.strip() for h in all_tt[1] if h.strip()]
-        lean_tt = [dict(zip(tt_headers, r)) for r in all_tt[2:] if any(r)][-10:]
-
-        # 2. Resilient Chat Memory Fetch
-        all_chat = chat_logs_ws.get_all_values()
-        if len(all_chat) > 1:
-            chat_headers = [h.strip() for h in all_chat[0] if h.strip()]
-            recent_memory = [dict(zip(chat_headers, r)) for r in all_chat[1:] if any(r)][-6:]
-        else:
-            recent_memory = []
-
-        # 3. Prompt Construction
-        prompt = f"""
-        CONTEXT: Routine Flow Architect. Sriniket is recovering from a bike accident.
-        TIMETABLE: {json.dumps(lean_tt)}
-        HISTORY: {json.dumps(recent_memory)}
-        
-        USER: {user_msg}
-        
-        RULES:
-        1. Use ACTION_RECS: {{"action_target": "...", "new_val": "...", "reason": "..."}} for changes.
-        """
-
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        response = model.generate_content(prompt)
-        ai_text = response.text
-
-        # 4. Save Current Interaction
-        ts = datetime.now(IST).strftime('%Y-%m-%d %H:%M')
-        chat_logs_ws.append_rows([[ts, "User", user_msg], [ts, "AI", ai_text]])
-
-        return jsonify({"status": "success", "text": ai_text}), 200
-
-    except Exception as e:
-        app.logger.error(traceback.format_exc())
-        return jsonify({"status": "error", "message": f"QA_DEBUG: {str(e)}"}), 500
+    except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/log_session', methods=['POST'])
 def log_session():
