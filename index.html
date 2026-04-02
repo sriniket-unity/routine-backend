@@ -5,150 +5,226 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Routine Flow | Command Center</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;900&family=JetBrains+Mono:wght@700&family=Outfit:wght@800&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono:wght@700&family=Outfit:wght@800&display=swap" rel="stylesheet">
     <script>
         tailwind.config = {
             darkMode: 'class',
-            theme: { extend: { colors: { obsidian: '#000000', sage: '#E8F5E9', debt: '#FF6B6B' } } }
+            theme: {
+                extend: {
+                    colors: { obsidian: '#000000', charcoal: '#121212', card: '#1E1E1E', sage: '#E8F5E9', debt: '#FF6B6B' },
+                    fontFamily: { sans: ['Inter', 'sans-serif'], display: ['Outfit', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] }
+                }
+            }
         }
     </script>
     <style>
-        body { background-color: #000000; color: #E5E7EB; -webkit-font-smoothing: antialiased; }
-        .glass-panel { background: rgba(30,30,30,0.7); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,0.05); }
-        .timer-glow { text-shadow: 0 0 40px rgba(255,255,255,0.15); }
+        body { background-color: #000000; color: #E5E7EB; -webkit-font-smoothing: antialiased; overflow-x: hidden; width: 100%; }
+        .glass-panel { background: rgba(30, 30, 30, 0.7); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
+        .timer-glow { text-shadow: 0 0 50px rgba(255, 255, 255, 0.15); }
+        .zone-panel { border-left: 2px solid rgba(255,255,255,0.1); padding-left: 1rem; }
+        .loading-overlay { background: rgba(0,0,0,0.95); backdrop-filter: blur(15px); }
         .tab-active { color: white !important; border-bottom: 2px solid white !important; }
         .tab-inactive { color: rgba(255,255,255,0.3) !important; border-bottom: 2px solid transparent !important; }
-        .loading-overlay { background: black; }
+        #main-timer { line-height: 1; transition: font-size 0.3s ease; }
     </style>
 </head>
 <body class="font-sans">
 
     <header class="fixed top-0 left-0 right-0 z-50 glass-panel">
         <div class="max-w-6xl mx-auto px-6 py-5 flex justify-between items-center">
-            <h1 class="font-display text-xl md:text-2xl font-900 tracking-tighter text-white uppercase italic">ROUTINE<span class="text-white/70 not-italic">FLOW</span></h1>
-            <nav class="flex space-x-6 md:space-x-10 font-black text-[10px] tracking-[0.3em]">
-                <button id="nav-dashboard" onclick="switchTab('dashboard')" class="pb-1 tab-active uppercase">DASHBOARD</button>
-                <button id="nav-insights" onclick="switchTab('insights')" class="pb-1 tab-inactive uppercase">INSIGHTS</button>
+            <h1 class="font-display text-xl md:text-2xl font-900 tracking-tighter text-white uppercase italic select-none">
+                ROUTINE<span class="text-white/70 not-italic">FLOW</span>
+            </h1>
+            <nav class="flex space-x-6 md:space-x-10">
+                <button id="nav-dashboard" onclick="switchTab('dashboard')" class="text-[9px] md:text-[10px] font-black tracking-[0.3em] md:tracking-[0.4em] transition-all pb-1 tab-active uppercase">DASHBOARD</button>
+                <button id="nav-insights" onclick="switchTab('insights')" class="text-[9px] md:text-[10px] font-black tracking-[0.3em] md:tracking-[0.4em] transition-all pb-1 tab-inactive uppercase">INSIGHTS</button>
             </nav>
         </div>
     </header>
 
     <main class="pt-32 md:pt-40 pb-12 px-6 max-w-6xl mx-auto min-h-screen">
+        
         <section id="view-dashboard" class="space-y-16 md:space-y-24">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-8 items-center">
-                <div class="border-l-2 border-white/10 pl-4 flex flex-col space-y-1">
-                    <span class="text-[9px] font-black tracking-widest text-white/30 uppercase">Previous</span>
-                    <h3 id="prev-activity" class="text-white text-sm font-black uppercase">---</h3>
-                    <span id="prev-progress" class="text-white/50 font-mono text-[10px]">0.0h / 0.0h</span>
-                </div>
-                <div class="flex flex-col items-center space-y-4">
-                    <span id="current-activity" class="text-white text-sm font-black tracking-[0.2em] px-8 py-3 rounded-full border-2 border-white/20 bg-black text-center min-w-[160px] uppercase">SLEEP</span>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-12 items-center">
+                
+                <div class="zone-panel flex flex-col space-y-2">
+                    <span class="text-[10px] font-black tracking-[0.5em] text-white/30 uppercase">Previous</span>
+                    <h3 id="prev-activity" class="text-white font-display text-sm md:text-lg font-black uppercase truncate">---</h3>
                     <div class="flex items-baseline space-x-2 font-mono">
-                        <span id="activity-progress" class="text-white text-3xl font-black">0.0h</span>
-                        <span class="text-white/20 text-lg">/</span>
-                        <span id="activity-total" class="text-white/60 text-sm font-bold">0.0h</span>
+                        <span id="prev-progress" class="text-white/50 text-xs font-bold">0.0h</span>
+                        <span class="text-white/20 text-[10px]">/</span>
+                        <span id="prev-total" class="text-white/30 text-[10px]">0.0h</span>
                     </div>
                 </div>
-                <div class="border-l-2 border-white/10 pl-4 flex flex-col space-y-1 items-end md:items-start text-right md:text-left">
-                    <span class="text-[9px] font-black tracking-widest text-white/30 uppercase">Next</span>
-                    <h3 id="next-activity" class="text-white text-sm font-black uppercase">---</h3>
-                    <span id="next-total" class="text-white/30 font-mono text-[10px]">0.0h / 0.0h</span>
+
+                <div class="flex flex-col items-center space-y-6 order-first md:order-none">
+                    <div class="relative">
+                        <span id="current-activity" class="text-white font-display text-sm md:text-lg font-black tracking-[0.3em] uppercase px-12 py-4 rounded-full border-2 border-white/20 bg-black block text-center min-w-[200px]">SLEEP</span>
+                    </div>
+                    <div class="flex items-baseline space-x-3 font-mono">
+                        <span id="activity-progress" class="text-white text-2xl md:text-3xl font-black tracking-tighter">0.0h</span>
+                        <span class="text-white/20 text-xl font-light">/</span>
+                        <span id="activity-total" class="text-white/60 text-base font-bold">7.5h</span>
+                    </div>
+                </div>
+
+                <div class="zone-panel border-l-2 md:border-l flex flex-col space-y-2 items-end md:items-start text-right md:text-left">
+                    <span class="text-[10px] font-black tracking-[0.5em] text-white/30 uppercase">Next</span>
+                    <h3 id="next-activity" class="text-white font-display text-sm md:text-lg font-black uppercase truncate">---</h3>
+                    <div class="flex items-baseline space-x-2 font-mono">
+                        <span class="text-white/50 text-xs font-bold">0.0h</span>
+                        <span class="text-white/20 text-[10px]">/</span>
+                        <span id="next-total" class="text-white/30 text-[10px]">0.0h</span>
+                    </div>
                 </div>
             </div>
 
-            <div class="flex flex-col items-center space-y-10">
-                <div id="main-timer" class="font-mono text-5xl md:text-[10rem] font-800 tracking-tighter text-white timer-glow leading-none">00h:00m:00s</div>
-                <div class="flex flex-col sm:flex-row gap-4 w-full sm:w-auto px-4">
-                    <button onclick="handleCheckIn()" class="bg-white text-black font-black px-12 py-4 rounded-2xl tracking-[0.2em] text-xs">CHECK-IN</button>
-                    <button onclick="handleCheckOut()" class="bg-card text-white border border-white/20 font-black px-12 py-4 rounded-2xl tracking-[0.2em] text-xs">CHECK-OUT</button>
+            <div class="flex flex-col items-center space-y-12">
+                <div id="main-timer" class="font-mono text-5xl sm:text-7xl md:text-[10rem] font-800 tracking-tighter text-white timer-glow leading-none">00h:00m:00s</div>
+                <div class="flex flex-col sm:flex-row gap-4 md:gap-8 w-full sm:w-auto px-4">
+                    <button id="btn-checkin" onclick="handleCheckIn()" class="w-full sm:w-auto px-16 py-6 bg-white text-black font-black rounded-3xl active:scale-95 transition-all text-sm tracking-[0.2em]">CHECK-IN</button>
+                    <button id="btn-checkout" onclick="handleCheckOut()" class="w-full sm:w-auto px-16 py-6 bg-card text-white border border-white/20 font-black rounded-3xl active:scale-95 transition-all text-sm tracking-[0.2em]">CHECK-OUT</button>
+                </div>
+            </div>
+
+            <div class="max-w-xl mx-auto bg-card/30 border border-white/5 rounded-[3rem] p-12 text-center">
+                <p class="text-white/60 text-sm font-medium italic leading-relaxed" id="quote-display">"Discipline is the highest form of self-love."</p>
+                <div id="debt-container" class="pt-8 mt-8 border-t border-white/5 hidden text-center w-full">
+                    <div class="text-debt text-5xl font-mono font-900 tracking-tighter" id="debt-value">00h:00m:00s</div>
+                    <div class="text-[10px] text-debt font-black tracking-[0.6em] uppercase mt-3">SESSION OVERTIME</div>
                 </div>
             </div>
         </section>
 
         <section id="view-insights" class="hidden space-y-12">
-            <h2 class="text-white text-2xl md:text-3xl font-black uppercase">Strategy <span class="text-white/20">Engine</span></h2>
+            <div class="flex flex-col space-y-4">
+                <h2 class="text-white font-display text-3xl font-black tracking-tight uppercase">Strategy <span class="text-white/20">Engine</span></h2>
+            </div>
             <div id="insights-grid" class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div class="col-span-full border-2 border-dashed border-white/5 rounded-[3rem] py-24 flex flex-col items-center justify-center text-center px-6">
-                    <p class="text-white/20 font-mono text-[10px] tracking-widest uppercase">Initializing Strategy Engine...</p>
+                <div class="col-span-full border-2 border-dashed border-white/5 rounded-[3rem] py-24 flex flex-col items-center justify-center space-y-4 text-center px-6">
+                    <div class="text-white/10 font-mono text-xs tracking-[0.5em] uppercase">Data Stream Empty</div>
+                    <p class="text-white/40 text-xs">Gemini needs more session history to recognize your productivity patterns.</p>
                 </div>
             </div>
         </section>
     </main>
 
-    <div id="loading-state" class="fixed inset-0 z-[100] bg-black flex items-center justify-center">
-        <div class="w-8 h-8 border-4 border-white/10 border-t-white rounded-full animate-spin"></div>
+    <div id="loading-state" class="fixed inset-0 z-[100] loading-overlay flex flex-col items-center justify-center p-6 text-center">
+        <div class="w-16 h-16 border-4 border-white/5 border-t-white rounded-full animate-spin mb-8"></div>
+        <p class="text-white font-black tracking-[0.5em] uppercase text-[11px]">Establishing Uplink</p>
     </div>
+
+    <div id="toast-container" class="fixed bottom-10 right-10 flex flex-col gap-4 z-[110]"></div>
 
     <script>
         const BackendAPI = "https://routine-backend-7yn2.onrender.com";
         const AppState = { currentActivity: null, timerSeconds: 0, totalSeconds: 0, timerState: 'READY', timerInterval: null };
+        let lastUpdate = { activity: null, originalVal: null };
 
         document.addEventListener('DOMContentLoaded', fetchSchedule);
 
         function parseTimeToMinutes(timeStr) {
-            const [time, mod] = timeStr.trim().split(' ');
-            let [h, m] = time.split(':');
-            h = parseInt(h); if(h === 12) h = 0;
-            let t = h * 60 + parseInt(m);
-            return mod === 'PM' ? t + 720 : t;
+            if (!timeStr) return 0;
+            const [time, modifier] = timeStr.trim().split(' ');
+            let [hours, minutes] = time.split(':');
+            hours = parseInt(hours, 10);
+            if (hours === 12) hours = 0;
+            let total = hours * 60 + parseInt(minutes, 10);
+            return modifier === 'PM' ? total + 720 : total;
         }
 
         async function fetchSchedule() {
             try {
-                const res = await fetch(`${BackendAPI}/get_schedule`);
-                const result = await res.json();
-                if (result.status === "success") {
+                const response = await fetch(`${BackendAPI}/get_schedule`);
+                const result = await response.json();
+                if (result.status === "success" && result.data.length > 0) {
                     const now = new Date();
-                    const curIST = now.toLocaleTimeString('en-US', { hour12: true, hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' });
-                    const curMin = parseTimeToMinutes(curIST);
-                    
-                    let idx = result.data.findIndex(i => {
-                        const [s, e] = i.Time.split('-').map(parseTimeToMinutes);
-                        return e < s ? (curMin >= s || curMin <= e) : (curMin >= s && curMin <= e);
+                    const currentTimeStr = now.toLocaleTimeString('en-US', { hour12: true, hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' });
+                    const currentMinutes = parseTimeToMinutes(currentTimeStr);
+                    let matchedIndex = result.data.findIndex(item => {
+                        const [start, end] = item.Time.split('-').map(parseTimeToMinutes);
+                        return end < start ? (currentMinutes >= start || currentMinutes <= end) : (currentMinutes >= start && currentMinutes <= end);
                     });
-                    if(idx === -1) idx = 0;
-                    const data = result.data[idx];
-                    const prev = result.data[idx-1] || result.data[result.data.length-1];
-                    const next = result.data[idx+1] || result.data[0];
+                    if (matchedIndex === -1) matchedIndex = 0;
+                    const data = result.data[matchedIndex];
+                    const prev = result.data[matchedIndex - 1] || result.data[result.data.length - 1];
+                    const next = result.data[matchedIndex + 1] || result.data[0];
 
+                    AppState.currentActivity = data;
                     document.getElementById('current-activity').innerText = data.Activity;
+                    
                     const totalHrs = parseFloat(data.Duration) || 1;
                     AppState.totalSeconds = Math.round(totalHrs * 3600);
                     AppState.timerSeconds = AppState.totalSeconds;
                     document.getElementById('activity-total').innerText = `${totalHrs.toFixed(1)}h`;
                     
+                    const prevHrs = parseFloat(prev.Duration) || 0;
                     document.getElementById('prev-activity').innerText = prev.Activity;
-                    document.getElementById('prev-progress').innerText = `${parseFloat(prev.Duration).toFixed(1)}h / ${parseFloat(prev.Duration).toFixed(1)}h`;
+                    document.getElementById('prev-progress').innerText = `${prevHrs.toFixed(1)}h`;
+                    document.getElementById('prev-total').innerText = `${prevHrs.toFixed(1)}h`;
+                    
+                    const nextHrs = parseFloat(next.Duration) || 0;
                     document.getElementById('next-activity').innerText = next.Activity;
-                    document.getElementById('next-total').innerText = `0.0h / ${parseFloat(next.Duration).toFixed(1)}h`;
+                    document.getElementById('next-total').innerText = `${nextHrs.toFixed(1)}h`;
+                    
                     updateTimerDisplay();
                 }
-            } finally { if(document.getElementById('loading-state')) document.getElementById('loading-state').remove(); }
-        }
-
-        function updateTimerDisplay() {
-            const abs = Math.abs(AppState.timerSeconds);
-            const h = Math.floor(abs/3600).toString().padStart(2,'0');
-            const m = Math.floor((abs%3600)/60).toString().padStart(2,'0');
-            const s = (abs%60).toString().padStart(2,'0');
-            document.getElementById('main-timer').innerText = `${h}h:${m}m:${s}s`;
-            document.getElementById('activity-progress').innerText = `${Math.max(0, (AppState.totalSeconds - AppState.timerSeconds)/3600).toFixed(1)}h`;
+            } catch (e) { showToast('Sync Offline', 'error'); }
+            finally { if(document.getElementById('loading-state')) document.getElementById('loading-state').remove(); }
         }
 
         function handleCheckIn() {
-            if(AppState.timerState !== 'READY') return;
+            if (AppState.timerState !== 'READY') return;
             AppState.timerState = 'RUNNING';
-            AppState.timerInterval = setInterval(() => { AppState.timerSeconds--; updateTimerDisplay(); }, 1000);
+            AppState.timerInterval = setInterval(() => {
+                AppState.timerSeconds--;
+                updateTimerDisplay();
+            }, 1000);
+            showToast('Timer Engaged', 'success');
         }
 
         async function handleCheckOut() {
-            const dur = Math.floor((AppState.totalSeconds - AppState.timerSeconds)/60);
+            clearInterval(AppState.timerInterval);
+            const plannedSecs = (parseFloat(AppState.currentActivity.Duration) || 1) * 3600;
+            const actualDurationMins = Math.max(0, Math.floor((plannedSecs - AppState.timerSeconds) / 60));
             await fetch(`${BackendAPI}/log_session`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ activity: AppState.currentActivity.Activity, planned_duration: AppState.currentActivity.Duration, actual_duration: dur })
+                body: JSON.stringify({ activity: AppState.currentActivity.Activity, planned_duration: AppState.currentActivity.Duration, actual_duration: actualDurationMins })
             });
             location.reload();
+        }
+
+        function updateTimerDisplay() {
+            const absSeconds = Math.abs(AppState.timerSeconds);
+            const h = Math.floor(absSeconds / 3600).toString().padStart(2, '0');
+            const m = Math.floor((absSeconds % 3600) / 60).toString().padStart(2, '0');
+            const s = (absSeconds % 60).toString().padStart(2, '0');
+            document.getElementById('main-timer').innerText = `${h}h:${m}m:${s}s`;
+            const elapsedHrs = (AppState.totalSeconds - AppState.timerSeconds) / 3600;
+            document.getElementById('activity-progress').innerText = `${Math.max(0, elapsedHrs).toFixed(1)}h`;
+            
+            if (AppState.timerSeconds < 0) {
+                document.getElementById('debt-container').classList.remove('hidden');
+                document.getElementById('debt-value').innerText = `${h}h:${m}m:${s}s`;
+                document.getElementById('main-timer').classList.add('text-debt');
+            }
+        }
+
+        function switchTab(view) {
+            const dash = document.getElementById('view-dashboard'), ins = document.getElementById('view-insights');
+            const dBtn = document.getElementById('nav-dashboard'), iBtn = document.getElementById('nav-insights');
+            if (view === 'dashboard') {
+                dash.classList.remove('hidden'); ins.classList.add('hidden');
+                dBtn.classList.replace('tab-inactive', 'tab-active'); iBtn.classList.replace('tab-active', 'tab-inactive');
+            } else {
+                dash.classList.add('hidden'); ins.classList.remove('hidden');
+                iBtn.classList.replace('tab-inactive', 'tab-active'); dBtn.classList.replace('tab-active', 'tab-inactive');
+                fetchInsights();
+            }
         }
 
         async function fetchInsights() {
@@ -159,35 +235,58 @@
                 const result = await res.json();
                 if (result.status === "success" && result.analysis) {
                     const i = result.analysis;
-                    grid.innerHTML = `
-                        <div class="bg-card border border-white/10 p-8 rounded-[2.5rem] flex flex-col space-y-6">
-                            <h4 class="text-white text-xl font-black uppercase italic">${i.title}</h4>
-                            <p class="text-white/50 text-sm font-medium leading-relaxed">${i.message}</p>
-                            <div class="pt-4 border-t border-white/5 flex justify-between items-center text-[10px] font-bold">
-                                <span class="text-white/20 uppercase">Strategy</span>
-                                <span class="text-sage">${i.action_target} → ${i.new_val}</span>
-                            </div>
-                        </div>`;
-                } else {
-                    grid.innerHTML = '<p class="col-span-full text-center text-white/20 text-[10px] uppercase">Need 3+ Logs to Start Analysis</p>';
-                }
-            } catch (e) { 
-                console.error(e);
-                grid.innerHTML = '<p class="col-span-full text-center text-debt text-[10px] font-black uppercase">Strategy Engine Offline</p>'; 
+                    renderInsightCard(i.action_target, i.new_val, AppState.currentActivity.Duration, i.title, i.message);
+                } else { grid.innerHTML = '<p class="col-span-full text-center text-white/20 text-[10px] uppercase">Need 3+ Logs to Start Analysis</p>'; }
+            } catch (e) { grid.innerHTML = '<p class="col-span-full text-center text-debt text-[10px] font-black uppercase">Strategy Engine Offline</p>'; }
+        }
+
+        function renderInsightCard(activity, newVal, originalVal, title, message, showUndo = false) {
+            const grid = document.getElementById('insights-grid');
+            grid.innerHTML = `
+                <div class="bg-card border border-white/10 p-8 rounded-[2.5rem] flex flex-col space-y-6">
+                    <h4 class="text-white text-xl font-black uppercase italic">${title}</h4>
+                    <p class="text-white/50 text-sm font-medium leading-relaxed">${message}</p>
+                    <div class="pt-6 border-t border-white/5">
+                        ${!showUndo ? `
+                            <button onclick="applyStrategy('${activity}', '${newVal}', '${originalVal}', '${title}', '${message}')" class="w-full py-4 bg-white text-black rounded-2xl font-black text-[10px] uppercase tracking-widest">Apply Strategy</button>
+                        ` : `
+                            <button onclick="undoStrategy()" class="w-full py-4 bg-card text-white border border-white/20 rounded-2xl font-black text-[10px] uppercase tracking-widest">Undo Changes</button>
+                        `}
+                    </div>
+                </div>`;
+        }
+
+        async function applyStrategy(act, newVal, orig, title, msg) {
+            showToast('Applying Update...', 'info');
+            const res = await fetch(`${BackendAPI}/update_timetable`, { 
+                method: 'PATCH', 
+                headers: {'Content-Type': 'application/json'}, 
+                body: JSON.stringify({ activity: act, new_val: newVal }) 
+            });
+            if(res.ok) { 
+                lastUpdate = { activity: act, originalVal: orig }; 
+                renderInsightCard(act, newVal, orig, "Updated", "Your schedule has been optimized.", true);
+                showToast('Schedule Synchronized', 'success');
             }
         }
 
-        function switchTab(view) {
-            const dash = document.getElementById('view-dashboard'), ins = document.getElementById('view-insights');
-            const dBtn = document.getElementById('nav-dashboard'), iBtn = document.getElementById('nav-insights');
-            if(view === 'dashboard') {
-                dash.classList.remove('hidden'); ins.classList.add('hidden');
-                dBtn.classList.replace('tab-inactive', 'tab-active'); iBtn.classList.replace('tab-active', 'tab-inactive');
-            } else {
-                dash.classList.add('hidden'); ins.classList.remove('hidden');
-                iBtn.classList.replace('tab-inactive', 'tab-active'); dBtn.classList.replace('tab-active', 'tab-inactive');
-                fetchInsights();
-            }
+        async function undoStrategy() {
+            showToast('Reverting...', 'info');
+            await fetch(`${BackendAPI}/update_timetable`, { 
+                method: 'PATCH', 
+                headers: {'Content-Type': 'application/json'}, 
+                body: JSON.stringify({ activity: lastUpdate.activity, new_val: lastUpdate.originalVal }) 
+            });
+            location.reload();
+        }
+
+        function showToast(m, t) {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `px-8 py-5 rounded-3xl glass-panel border border-white/10 text-[10px] font-black uppercase tracking-widest shadow-2xl animate-in slide-in-from-right-10`;
+            toast.innerText = m;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 4000);
         }
     </script>
 </body>
