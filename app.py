@@ -3,7 +3,7 @@ load_dotenv()
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import gspread
-from datetime import datetime
+from datetime import datetime, timedelta # Added timedelta for Monday-logic
 import os
 import google.generativeai as genai
 import json
@@ -37,29 +37,20 @@ def init_sheets():
 
 init_sheets()
 
-# --- ⚡ V4.5 CACHE LAYER ---
-# Stored in server memory to prevent redundant AI calls
-analysis_cache = {
-    "data": None,
-    "log_count": 0
-}
+# --- ⚡ CACHE LAYER ---
+analysis_cache = {"data": None, "log_count": 0}
 
 # --- 🌐 ENDPOINTS ---
 
 @app.route('/', methods=['GET'])
 def health():
     status = "Ready" if logs_ws else "Error"
-    return jsonify({
-        "service": "Routine Flow Backend",
-        "version": "4.5 (Cached)",
-        "sheets": status
-    }), 200
+    return jsonify({"service": "Routine Flow Backend", "version": "4.6", "sheets": status}), 200
 
 @app.route('/get_schedule', methods=['GET'])
 def get_schedule():
     try:
         all_val = timetable_ws.get_all_values()
-        # Row 2 contains headers
         headers = [h.strip() for h in all_val[1]] 
         data = [dict(zip(headers, r)) for r in all_val[2:] if any(r)]
         return jsonify({"status": "success", "data": data})
@@ -71,13 +62,7 @@ def log_session():
     try:
         d = request.json
         ts = datetime.now(IST).strftime('%Y-%m-%d %H:%M')
-        logs_ws.append_row([
-            ts, 
-            d.get('activity'), 
-            d.get('planned_duration'), 
-            d.get('actual_duration'), 
-            d.get('time_debt', 0)
-        ])
+        logs_ws.append_row([ts, d.get('activity'), d.get('planned_duration'), d.get('actual_duration'), d.get('time_debt', 0)])
         return jsonify({"status": "success"}), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -87,17 +72,68 @@ def bulk_log():
     try:
         data_list = request.json 
         ts = datetime.now(IST).strftime('%Y-%m-%d %H:%M')
-        rows_to_add = []
-        for d in data_list:
-            rows_to_add.append([
-                ts, 
-                d.get('activity'), 
-                d.get('planned_duration'), 
-                d.get('actual_duration'), 
-                d.get('time_debt', 0)
-            ])
+        rows_to_add = [[ts, d.get('activity'), d.get('planned_duration'), d.get('actual_duration'), d.get('time_debt', 0)] for d in data_list]
         logs_ws.append_rows(rows_to_add)
         return jsonify({"status": "success", "count": len(rows_to_add)}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# --- 📊 NEW: ANALYTICS ENGINE ---
+@app.route('/get_analytics', methods=['GET'])
+def get_analytics():
+    """Calculates metrics for the UI dashboard Kit."""
+    try:
+        all_logs = logs_ws.get_all_records()
+        if not all_logs:
+            return jsonify({"status": "success", "overall": None, "week": None}), 200
+
+        now = datetime.now(IST)
+        # Calculate Monday at 00:00 for the 'Week' toggle
+        start_of_week = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+
+        def process_subset(subset):
+            if not subset: return {"study": 0, "adherence": 0, "debt": 0, "chart": [0]*7}
+            
+            total_study = sum(float(r.get('actual_duration') or 0) for r in subset)
+            total_debt = sum(float(r.get('time_debt') or 0) for r in subset)
+            
+            # Adherence: % of sessions where actual > 0
+            completed = sum(1 for r in subset if float(r.get('actual_duration') or 0) > 0)
+            adherence = round((completed / len(subset)) * 100)
+            
+            # Build 7-day chart (Mon-Sun)
+            chart = [0.0] * 7
+            for r in subset:
+                try:
+                    dt = datetime.strptime(r['Timestamp'], '%Y-%m-%d %H:%M')
+                    chart[dt.weekday()] += float(r.get('actual_duration') or 0)
+                except: continue
+            
+            return {
+                "study": round(total_study, 1),
+                "adherence": adherence,
+                "debt": round(total_debt, 1),
+                "chart": chart
+            }
+
+        # 1. Overall Stats
+        overall_data = process_subset(all_logs)
+        
+        # 2. Weekly Stats (Filtered)
+        week_logs = []
+        for r in all_logs:
+            try:
+                log_dt = IST.localize(datetime.strptime(r['Timestamp'], '%Y-%m-%d %H:%M'))
+                if log_dt >= start_of_week:
+                    week_logs.append(r)
+            except: continue
+        week_data = process_subset(week_logs)
+
+        return jsonify({
+            "status": "success",
+            "overall": overall_data,
+            "week": week_data
+        }), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -105,54 +141,19 @@ def bulk_log():
 def analyze_patterns():
     global analysis_cache
     try:
-        # 1. Fetch all raw log values
         all_logs = logs_ws.get_all_values()
         current_count = len(all_logs)
-
-        # 2. CACHE HIT: If count is same, skip Gemini and return cached data
         if analysis_cache["data"] and current_count == analysis_cache["log_count"]:
-            return jsonify({
-                "status": "success", 
-                "analysis": analysis_cache["data"],
-                "source": "cache"
-            }), 200
-        
-        # 3. If logs are too few (Header row + Title row + <3 data rows), return None
+            return jsonify({"status": "success", "analysis": analysis_cache["data"], "source": "cache"}), 200
         if current_count < 5: 
             return jsonify({"status": "success", "analysis": None}), 200
-        
-        # 4. proceed with fresh Gemini analysis
-        # Using the last 10 rows for context
         headers = all_logs[1] 
-        recent_rows = all_logs[-10:]
-        recs = [dict(zip(headers, row)) for row in recent_rows]
-        
-        log_context = json.dumps(recs)
-        prompt = f"""
-        Analyze these routine logs for Sriniket: {log_context}. 
-        IMPORTANT: All durations (planned, actual, and debt) are in DECIMAL HOURS.
-        Identify ONE performance trend or optimization. 
-        Return ONLY a JSON object:
-        {{
-            "title": "Insight Title",
-            "message": "Specific advice based on hour-logs",
-            "action_target": "Activity Name",
-            "new_val": "Suggested duration (e.g., 1.0h)"
-        }}
-        """
+        recs = [dict(zip(headers, row)) for row in all_logs[-10:]]
+        prompt = f"Analyze these routine logs for Sriniket: {json.dumps(recs)}. All durations in DECIMAL HOURS. Identify ONE trend. Return ONLY JSON: {{\"title\":\"...\",\"message\":\"...\",\"action_target\":\"...\",\"new_val\":\"...\"}}"
         response = model.generate_content(prompt)
-        clean_text = response.text.strip().replace("```json", "").replace("```", "")
-        analysis_data = json.loads(clean_text)
-
-        # 5. UPDATE CACHE
-        analysis_cache["data"] = analysis_data
-        analysis_cache["log_count"] = current_count
-
-        return jsonify({
-            "status": "success", 
-            "analysis": analysis_data,
-            "source": "gemini_api"
-        }), 200
+        analysis_data = json.loads(response.text.strip().replace("```json", "").replace("```", ""))
+        analysis_cache = {"data": analysis_data, "log_count": current_count}
+        return jsonify({"status": "success", "analysis": analysis_data}), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -160,18 +161,12 @@ def analyze_patterns():
 def update_timetable():
     try:
         data = request.json
-        activity = data.get('activity')
-        new_val = data.get('new_val')
-        
-        # Case-Insensitive Regex Search
-        pattern = re.compile(rf'^{re.escape(activity)}$', re.IGNORECASE)
+        pattern = re.compile(rf'^{re.escape(data.get("activity"))}$', re.IGNORECASE)
         cell = timetable_ws.find(pattern)
-        
         if cell:
-            timetable_ws.update_cell(cell.row, cell.col + 1, new_val)
-            return jsonify({"status": "success", "message": f"Updated {activity}"}), 200
-        
-        return jsonify({"status": "error", "message": f"Activity '{activity}' not found"}), 404
+            timetable_ws.update_cell(cell.row, cell.col + 1, data.get('new_val'))
+            return jsonify({"status": "success"}), 200
+        return jsonify({"status": "error", "message": "Activity not found"}), 404
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -182,10 +177,8 @@ def clear_logs():
         records = logs_ws.get_all_values()
         if len(records) > 1:
             logs_ws.delete_rows(2, len(records))
-            # Clear cache so engine doesn't show old data for empty sheet
             analysis_cache = {"data": None, "log_count": 0}
-            return jsonify({"status": "success"}), 200
-        return jsonify({"status": "success", "message": "Sheet already empty"}), 200
+        return jsonify({"status": "success"}), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 

@@ -4,12 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Routine Flow | Command Center</title>
+    
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='white'/><path d='M30 50 L50 20 L45 50 L70 50 L50 80 L55 50 Z' fill='black'/></svg>">
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono:wght@700&family=Outfit:wght@800&display=swap" rel="stylesheet">
     <script>
         tailwind.config = {
             darkMode: 'class',
-            theme: { extend: { colors: { obsidian: '#000000', sage: '#E8F5E9', debt: '#FF6B6B' } } }
+            theme: { extend: { colors: { obsidian: '#000000', sage: '#E8F5E9', debt: '#FF6B6B', chart: '#6366F1' } } }
         }
     </script>
     <style>
@@ -22,6 +25,7 @@
         .toast-error { border-color: #FF6B6B !important; color: #FF6B6B !important; }
         button:active { transform: scale(0.98); }
         .stale-content { opacity: 0.5; filter: grayscale(0.5); transition: opacity 0.3s ease; }
+        .stat-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 1.5rem; padding: 1.5rem; }
     </style>
 </head>
 <body class="font-sans">
@@ -29,14 +33,16 @@
     <header class="fixed top-0 left-0 right-0 z-50 glass-panel">
         <div class="max-w-6xl mx-auto px-6 py-5 flex justify-between items-center">
             <h1 class="font-display text-xl md:text-2xl font-900 tracking-tighter text-white uppercase italic">ROUTINE<span class="text-white/70 not-italic">FLOW</span></h1>
-            <nav class="flex space-x-6 md:space-x-10 font-black text-[10px] tracking-[0.4em]">
+            <nav class="flex space-x-4 md:space-x-10 font-black text-[9px] md:text-[10px] tracking-[0.3em]">
                 <button id="nav-dashboard" onclick="switchTab('dashboard')" class="pb-1 tab-active uppercase">DASHBOARD</button>
                 <button id="nav-insights" onclick="switchTab('insights')" class="pb-1 tab-inactive uppercase">INSIGHTS</button>
+                <button id="nav-analytics" onclick="switchTab('analytics')" class="pb-1 tab-inactive uppercase">ANALYTICS</button>
             </nav>
         </div>
     </header>
 
     <main class="pt-32 md:pt-40 pb-12 px-6 max-w-6xl mx-auto min-h-screen">
+        
         <section id="view-dashboard" class="space-y-16 md:space-y-24">
             <div class="grid grid-cols-1 md:grid-cols-3 gap-8 items-center">
                 <div class="zone-panel flex flex-col space-y-1">
@@ -71,6 +77,63 @@
         <section id="view-insights" class="hidden space-y-12">
             <h2 class="text-white text-2xl md:text-3xl font-black uppercase tracking-tight">Strategy <span class="text-white/20">Engine</span></h2>
             <div id="insights-grid" class="grid grid-cols-1 md:grid-cols-2 gap-8"></div>
+        </section>
+
+        <section id="view-analytics" class="hidden space-y-8">
+            <div class="flex justify-between items-center">
+                <h2 class="text-white text-2xl md:text-3xl font-black uppercase tracking-tight">Performance <span class="text-white/20">Metrics</span></h2>
+                <div class="flex bg-white/5 p-1 rounded-xl">
+                    <button onclick="toggleRange('week')" id="btn-week" class="px-4 py-2 text-[10px] font-black uppercase rounded-lg bg-white text-black transition-all">Week</button>
+                    <button onclick="toggleRange('overall')" id="btn-overall" class="px-4 py-2 text-[10px] font-black uppercase text-white/30 transition-all">Overall</button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="stat-card flex flex-col justify-between h-40">
+                    <span class="text-[10px] font-black text-white/30 uppercase tracking-[0.2em]">Total Study</span>
+                    <div class="flex items-baseline space-x-2">
+                        <span id="stat-study-hrs" class="text-4xl font-black text-white">0.0</span>
+                        <span class="text-sm font-bold text-white/20 uppercase tracking-widest">Hours</span>
+                    </div>
+                    <div class="w-full bg-white/5 h-1 rounded-full overflow-hidden">
+                        <div class="bg-white w-2/3 h-full"></div>
+                    </div>
+                </div>
+                <div class="stat-card flex flex-col justify-between h-40">
+                    <span class="text-[10px] font-black text-white/30 uppercase tracking-[0.2em]">Adherence Rate</span>
+                    <div class="flex items-baseline space-x-2">
+                        <span id="stat-adherence" class="text-4xl font-black text-white">0%</span>
+                    </div>
+                    <span class="text-[10px] font-bold text-sage/40 uppercase">Logging is active</span>
+                </div>
+                <div class="stat-card flex flex-col justify-between h-40">
+                    <span class="text-[10px] font-black text-white/30 uppercase tracking-[0.2em]">Time Debt</span>
+                    <div class="flex items-baseline space-x-2">
+                        <span id="stat-debt" class="text-4xl font-black text-debt">0.0</span>
+                        <span class="text-sm font-bold text-debt/20 uppercase tracking-widest">Hours</span>
+                    </div>
+                    <span class="text-[10px] font-bold text-debt/40 uppercase">Pending sessions</span>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="stat-card min-h-[300px] flex flex-col items-center justify-center border-dashed border-white/10 bg-transparent">
+                    <div class="w-32 h-32 border-[12px] border-white/5 border-t-white rounded-full flex items-center justify-center">
+                        <span class="text-xl font-black">--%</span>
+                    </div>
+                    <span class="mt-6 text-[10px] font-black uppercase text-white/30 tracking-[0.3em]">Habit Consistency</span>
+                </div>
+                <div class="stat-card min-h-[300px] flex flex-col justify-end p-8 space-y-4">
+                    <div class="flex items-end space-x-2 h-32">
+                        <div class="bg-white/10 w-full h-[40%] rounded-t-lg"></div>
+                        <div class="bg-white/10 w-full h-[60%] rounded-t-lg"></div>
+                        <div class="bg-white/10 w-full h-[30%] rounded-t-lg"></div>
+                        <div class="bg-white w-full h-[90%] rounded-t-lg"></div>
+                        <div class="bg-white/10 w-full h-[50%] rounded-t-lg"></div>
+                    </div>
+                    <span class="text-[10px] font-black uppercase text-white/30 tracking-[0.3em]">Load Balance</span>
+                </div>
+            </div>
         </section>
     </main>
 
@@ -158,8 +221,6 @@
 
         async function fetchInsights() {
             const grid = document.getElementById('insights-grid');
-            
-            // --- ⚡ V4.5 OPTIMIZATION: Instant UI from Cache ---
             const cachedInsight = JSON.parse(localStorage.getItem('last_ai_insight'));
             if (cachedInsight) {
                 renderInsightCard(cachedInsight.action_target, cachedInsight.new_val, "...", cachedInsight.title, cachedInsight.message);
@@ -167,23 +228,15 @@
             } else {
                 grid.innerHTML = '<div class="col-span-full py-12 text-white/20 text-center animate-pulse text-[10px] uppercase tracking-widest">Engine Connecting...</div>';
             }
-
             try {
                 const res = await fetch(`${BackendAPI}/analyze_patterns`);
                 const result = await res.json();
-                
                 if (result.status === "success" && result.analysis) {
-                    // Update Cache
                     localStorage.setItem('last_ai_insight', JSON.stringify(result.analysis));
-                    
                     const i = result.analysis;
                     const targetActivity = AppState.allActivities.find(a => a.Activity.trim().toLowerCase() === i.action_target.trim().toLowerCase());
                     const originalVal = targetActivity ? targetActivity.Duration : "Unknown";
-                    
-                    // Show Fresh Data (Remove stale look)
                     renderInsightCard(i.action_target, i.new_val, originalVal, i.title, i.message);
-                } else if (!cachedInsight) {
-                    grid.innerHTML = '<p class="col-span-full text-center text-white/20 text-[10px] uppercase tracking-widest">Need more log data</p>';
                 }
             } catch (e) {
                 if(!cachedInsight) grid.innerHTML = '<p class="col-span-full text-center text-debt text-[10px] font-black uppercase">Engine Offline</p>';
@@ -194,77 +247,50 @@
             const grid = document.getElementById('insights-grid');
             const displayOriginal = originalVal.toString().toLowerCase().includes('h') ? originalVal : `${originalVal}h`;
             const displayNew = newVal.toString().toLowerCase().includes('h') ? newVal : `${newVal}h`;
-
-            grid.innerHTML = `
-                <div class="bg-card border border-white/10 p-8 rounded-[2.5rem] flex flex-col space-y-6 animate-in fade-in zoom-in duration-500">
-                    <div class="flex flex-col space-y-2">
-                        <span class="text-sage text-[10px] font-black tracking-[0.5em] uppercase">AI Optimization</span>
-                        <h4 class="text-white font-display text-xl font-black uppercase italic tracking-tight">${title}</h4>
-                    </div>
-                    <p class="text-white/50 text-sm font-medium leading-relaxed italic">"${message}"</p>
-                    <div class="pt-6 border-t border-white/5">
-                        <button onclick="${!showUndo ? `applyStrategy('${activity}', '${newVal}', '${originalVal}')` : `undoStrategy()`}" 
-                            class="w-full py-5 ${!showUndo ? 'bg-white text-black' : 'bg-card text-white border border-white/20'} rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] transition-all">
-                            ${!showUndo ? `ADJUST ${activity}: ${displayOriginal} ➔ ${displayNew}` : `REVERT ${activity}: ${displayNew} ➔ ${displayOriginal}`}
-                        </button>
-                    </div>
-                </div>`;
+            grid.innerHTML = `<div class="bg-card border border-white/10 p-8 rounded-[2.5rem] flex flex-col space-y-6 animate-in fade-in zoom-in duration-500"><div class="flex flex-col space-y-2"><span class="text-sage text-[10px] font-black tracking-[0.5em] uppercase">AI Optimization</span><h4 class="text-white font-display text-xl font-black uppercase italic tracking-tight">${title}</h4></div><p class="text-white/50 text-sm font-medium leading-relaxed italic">"${message}"</p><div class="pt-6 border-t border-white/5"><button onclick="${!showUndo ? `applyStrategy('${activity}', '${newVal}', '${originalVal}')` : `undoStrategy()`}" class="w-full py-5 ${!showUndo ? 'bg-white text-black' : 'bg-card text-white border border-white/20'} rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] transition-all">${!showUndo ? `ADJUST ${activity}: ${displayOriginal} ➔ ${displayNew}` : `REVERT ${activity}: ${displayNew} ➔ ${displayOriginal}`}</button></div></div>`;
         }
 
         async function applyStrategy(act, newVal, orig) {
             showToast('Applying Update...', 'info');
             try {
-                const res = await fetch(`${BackendAPI}/update_timetable`, { 
-                    method: 'PATCH', 
-                    headers: {'Content-Type': 'application/json'}, 
-                    body: JSON.stringify({ activity: act, new_val: newVal }) 
-                });
-                const result = await res.json();
-                if(res.ok) { 
-                    lastUpdate = { activity: act, originalVal: orig }; 
-                    localStorage.setItem('routine_last_update', JSON.stringify(lastUpdate));
-                    renderInsightCard(act, newVal, orig, "ADJUSTMENT LIVE", "Database synchronized successfully.", true);
-                    showToast('Schedule Synchronized', 'success');
-                } else { showToast(`Error: ${result.message}`, 'error'); }
+                const res = await fetch(`${BackendAPI}/update_timetable`, { method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ activity: act, new_val: newVal }) });
+                if(res.ok) { lastUpdate = { activity: act, originalVal: orig }; localStorage.setItem('routine_last_update', JSON.stringify(lastUpdate)); renderInsightCard(act, newVal, orig, "ADJUSTMENT LIVE", "Database synchronized successfully.", true); showToast('Schedule Synchronized', 'success'); }
             } catch (e) { showToast("Connection Failed", "error"); }
         }
 
         async function undoStrategy() {
             showToast('Reverting...', 'info');
             try {
-                const res = await fetch(`${BackendAPI}/update_timetable`, { 
-                    method: 'PATCH', 
-                    headers: {'Content-Type': 'application/json'}, 
-                    body: JSON.stringify({ activity: lastUpdate.activity, new_val: lastUpdate.originalVal }) 
-                });
-                const result = await res.json();
-                if(res.ok) {
-                    showToast("Restored Original Schedule", "success");
-                    localStorage.removeItem('routine_last_update');
-                    lastUpdate = { activity: null, originalVal: null };
-                    setTimeout(() => location.reload(), 1500);
-                } else { showToast(`Revert Failed: ${result.message}`, 'error'); }
+                const res = await fetch(`${BackendAPI}/update_timetable`, { method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ activity: lastUpdate.activity, new_val: lastUpdate.originalVal }) });
+                if(res.ok) { showToast("Restored Schedule", "success"); localStorage.removeItem('routine_last_update'); lastUpdate = { activity: null, originalVal: null }; setTimeout(() => location.reload(), 1500); }
             } catch (e) { showToast("Network Error", "error"); }
         }
 
         function switchTab(view) {
-            const dash = document.getElementById('view-dashboard'), ins = document.getElementById('view-insights');
-            const dBtn = document.getElementById('nav-dashboard'), iBtn = document.getElementById('nav-insights');
-            if(view === 'dashboard') {
-                dash.classList.remove('hidden'); ins.classList.add('hidden');
-                dBtn.classList.replace('tab-inactive', 'tab-active'); iBtn.classList.replace('tab-active', 'tab-inactive');
+            const dash = document.getElementById('view-dashboard'), ins = document.getElementById('view-insights'), ana = document.getElementById('view-analytics');
+            const dBtn = document.getElementById('nav-dashboard'), iBtn = document.getElementById('nav-insights'), aBtn = document.getElementById('nav-analytics');
+            dash.classList.add('hidden'); ins.classList.add('hidden'); ana.classList.add('hidden');
+            dBtn.classList.replace('tab-active', 'tab-inactive'); iBtn.classList.replace('tab-active', 'tab-inactive'); aBtn.classList.replace('tab-active', 'tab-inactive');
+            if(view === 'dashboard') { dash.classList.remove('hidden'); dBtn.classList.replace('tab-inactive', 'tab-active'); }
+            else if(view === 'insights') { ins.classList.remove('hidden'); iBtn.classList.replace('tab-inactive', 'tab-active'); fetchInsights(); }
+            else if(view === 'analytics') { ana.classList.remove('hidden'); aBtn.classList.replace('tab-inactive', 'tab-active'); }
+        }
+
+        function toggleRange(range) {
+            const w = document.getElementById('btn-week'), o = document.getElementById('btn-overall');
+            if(range === 'week') {
+                w.className = "px-4 py-2 text-[10px] font-black uppercase rounded-lg bg-white text-black transition-all";
+                o.className = "px-4 py-2 text-[10px] font-black uppercase text-white/30 transition-all";
             } else {
-                dash.classList.add('hidden'); ins.classList.remove('hidden');
-                iBtn.classList.replace('tab-inactive', 'tab-active'); dBtn.classList.replace('tab-active', 'tab-inactive');
-                fetchInsights();
+                o.className = "px-4 py-2 text-[10px] font-black uppercase rounded-lg bg-white text-black transition-all";
+                w.className = "px-4 py-2 text-[10px] font-black uppercase text-white/30 transition-all";
             }
         }
 
         function showToast(m, t) {
             const container = document.getElementById('toast-container');
             const toast = document.createElement('div');
-            const isError = t === 'error';
-            toast.className = `px-8 py-5 rounded-3xl glass-panel border ${isError ? 'toast-error' : 'border-white/10'} text-[10px] font-black uppercase tracking-widest shadow-2xl animate-in slide-in-from-right-10`;
+            toast.className = `px-8 py-5 rounded-3xl glass-panel border ${t === 'error' ? 'toast-error' : 'border-white/10'} text-[10px] font-black uppercase tracking-widest shadow-2xl animate-in slide-in-from-right-10`;
             toast.innerText = m;
             container.appendChild(toast);
             setTimeout(() => toast.remove(), 4000);
