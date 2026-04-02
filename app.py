@@ -10,6 +10,7 @@ import json
 import pytz
 import re 
 import traceback
+import logging
 
 app = Flask(__name__)
 CORS(app)
@@ -33,17 +34,71 @@ def init_sheets():
             timetable_ws = sheet.worksheet("Timetable")
             logs_ws = sheet.worksheet("Logs")
             chat_logs_ws = sheet.worksheet("ChatLogs")
-            print("✅ Sheets Status: Gemini 3 Systems Synchronized.")
+            app.logger.info("✅ Sheets Status: Gemini 3 Systems Synchronized.")
     except Exception as e:
-        print(f"❌ Sheets Error: {e}")
+        app.logger.error(f"❌ Sheets Error: {e}")
 
 init_sheets()
+
+# --- 🛠️ HELPERS ---
+def sanitize_ts(ts_str):
+    try:
+        parts = ts_str.split(' ')
+        h, m = parts[1].split(':')
+        return f"{parts[0]} {h.zfill(2)}:{m.zfill(2)}"
+    except: return ts_str
 
 # --- 🌐 ENDPOINTS ---
 
 @app.route('/', methods=['GET'])
 def health():
-    return jsonify({"service": "Routine Flow Architect", "version": "5.5.3", "status": "Online"}), 200
+    return jsonify({
+        "service": "Routine Flow Architect", 
+        "version": "5.5.5", 
+        "status": "Online",
+        "model": "gemini-3-flash-preview"
+    }), 200
+
+@app.route('/get_schedule', methods=['GET'])
+def get_schedule():
+    try:
+        if not timetable_ws: init_sheets()
+        all_val = timetable_ws.get_all_values()
+        # Resilient Header Parsing (Ignores merged Row 1)
+        headers = [h.strip() for h in all_val[1] if h.strip()] 
+        data = [dict(zip(headers, r)) for r in all_val[2:] if any(r)]
+        return jsonify({"status": "success", "data": data})
+    except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/get_analytics', methods=['GET'])
+def get_analytics():
+    try:
+        if not logs_ws: init_sheets()
+        raw_logs = logs_ws.get_all_values()
+        if len(raw_logs) <= 1: return jsonify({"status": "success", "overall": None, "week": None}), 200
+        
+        headers = [h.strip() for h in raw_logs[0] if h.strip()]
+        all_logs = [dict(zip(headers, r)) for r in raw_logs[1:] if any(r)]
+        
+        now = datetime.now(IST)
+        start_of_week = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0)
+
+        def process_subset(subset):
+            if not subset: return {"study": 0, "adherence": 0, "debt": 0, "chart": [0.0]*7}
+            total_study = sum(float(r.get('Actual (hrs)') or 0) for r in subset)
+            total_debt = sum(float(r.get('Time Debt') or 0) for r in subset)
+            completed = sum(1 for r in subset if float(r.get('Actual (hrs)') or 0) > 0)
+            adherence = round((completed / len(subset)) * 100)
+            chart = [0.0] * 7
+            for r in subset:
+                try:
+                    dt = datetime.strptime(sanitize_ts(r.get('Timestamp', '')), '%Y-%m-%d %H:%M')
+                    chart[dt.weekday()] += float(r.get('Actual (hrs)') or 0)
+                except: continue
+            return {"study": round(total_study, 1), "adherence": adherence, "debt": round(total_debt, 1), "chart": chart}
+
+        return jsonify({"status": "success", "overall": process_subset(all_logs), "week": process_subset([r for r in all_logs if IST.localize(datetime.strptime(sanitize_ts(r.get('Timestamp', '')), '%Y-%m-%d %H:%M')) >= start_of_week])}), 200
+    except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/chat', methods=['POST'])
 def chat():
@@ -51,12 +106,13 @@ def chat():
         if not chat_logs_ws: init_sheets()
         user_msg = request.json.get('message')
 
-        # 1. Fetch Schedule (Manual zip to ignore merged Row 1)
+        # 1. Fetch Schedule Context (Ignoring Merged Title Row)
         all_tt = timetable_ws.get_all_values()
         tt_headers = [h.strip() for h in all_tt[1] if h.strip()]
-        lean_tt = [dict(zip(tt_headers, r)) for r in all_tt[2:] if any(r)][-10:]
+        timetable_data = [dict(zip(tt_headers, r)) for r in all_tt[2:] if any(r)]
+        lean_tt = timetable_data[-10:]
 
-        # 2. Fetch History (Manual zip to handle empty columns)
+        # 2. Fetch Chat Memory
         all_chat = chat_logs_ws.get_all_values()
         memory = []
         if len(all_chat) > 1:
@@ -66,22 +122,22 @@ def chat():
         # 3. Prompt Construction
         prompt = f"""
         System: You are 'Routine Flow Architect' for Sriniket.
-        Context: Sriniket is recovering from an accident.
-        Timetable Data: {json.dumps(lean_tt)}
+        Context: Sriniket is recovering from a bike accident.
+        Schedule: {json.dumps(lean_tt)}
         Memory: {json.dumps(memory)}
         
         User Input: {user_msg}
         
-        Format for changes:
-        ACTION_RECS: {{"action_target": "Activity Name", "new_val": "1.0h", "reason": "Reason"}}
+        Mandatory Change Format:
+        ACTION_RECS: {{"action_target": "Activity Name", "new_val": "0.5h", "reason": "Rest and recovery"}}
         """
 
-        # 🚀 RESTORED: Gemini 3 Flash
-        model = genai.GenerativeModel('gemini-3-flash')
+        # 🚀 VALIDATED: Using the exact ID from your AI Studio Screenshot
+        model = genai.GenerativeModel('gemini-3-flash-preview')
         response = model.generate_content(prompt)
         ai_text = response.text
 
-        # 4. Save Interaction
+        # 4. Save Interaction to Sheets
         ts = datetime.now(IST).strftime('%Y-%m-%d %H:%M')
         chat_logs_ws.append_rows([[ts, "User", user_msg], [ts, "AI", ai_text]])
 
@@ -90,17 +146,6 @@ def chat():
     except Exception as e:
         app.logger.error(traceback.format_exc())
         return jsonify({"status": "error", "message": f"QA_DEBUG: {str(e)}"}), 500
-
-# Other endpoints (get_schedule, log_session, clear_chat, etc.) remain standard
-@app.route('/get_schedule', methods=['GET'])
-def get_schedule():
-    try:
-        if not timetable_ws: init_sheets()
-        all_val = timetable_ws.get_all_values()
-        headers = [h.strip() for h in all_val[1] if h.strip()] 
-        data = [dict(zip(headers, r)) for r in all_val[2:] if any(r)]
-        return jsonify({"status": "success", "data": data})
-    except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/log_session', methods=['POST'])
 def log_session():
@@ -115,7 +160,8 @@ def log_session():
 def clear_chat():
     try:
         records = chat_logs_ws.get_all_values()
-        if len(records) > 1: chat_logs_ws.delete_rows(2, len(records))
+        if len(records) > 1:
+            chat_logs_ws.delete_rows(2, len(records))
         return jsonify({"status": "success"}), 200
     except Exception as e: return jsonify({"status": "error"}), 500
 
