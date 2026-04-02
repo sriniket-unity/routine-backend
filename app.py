@@ -50,7 +50,7 @@ def sanitize_ts(ts_str):
 
 @app.route('/', methods=['GET'])
 def health():
-    return jsonify({"service": "Routine Flow Architect", "version": "5.4.2", "status": "Ready"}), 200
+    return jsonify({"service": "Routine Flow Architect", "version": "5.4.3", "status": "Ready"}), 200
 
 @app.route('/get_schedule', methods=['GET'])
 def get_schedule():
@@ -59,15 +59,6 @@ def get_schedule():
         headers = [h.strip() for h in all_val[1]] 
         data = [dict(zip(headers, r)) for r in all_val[2:] if any(r)]
         return jsonify({"status": "success", "data": data})
-    except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
-
-@app.route('/log_session', methods=['POST'])
-def log_session():
-    try:
-        d = request.json
-        ts = datetime.now(IST).strftime('%Y-%m-%d %H:%M')
-        logs_ws.append_row([ts, d.get('activity'), d.get('planned_duration'), d.get('actual_duration'), d.get('time_debt', 0)])
-        return jsonify({"status": "success"}), 200
     except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/get_analytics', methods=['GET'])
@@ -95,57 +86,58 @@ def get_analytics():
         return jsonify({"status": "success", "overall": process_subset(all_logs), "week": process_subset([r for r in all_logs if IST.localize(datetime.strptime(sanitize_ts(r.get('Timestamp', '')), '%Y-%m-%d %H:%M')) >= start_of_week])}), 200
     except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
 
-# --- 🤖 CHAT ENGINE (V5.4.2: FIXED ROLE ALTERNATION) ---
 @app.route('/chat', methods=['POST'])
 def chat():
     try:
         user_msg = request.json.get('message')
         
-        # Fetch data for context
-        raw_history = chat_logs_ws.get_all_records()
-        memory = raw_history[-10:] if len(raw_history) > 10 else raw_history
+        # 1. Fetch Context
         timetable = timetable_ws.get_all_records()[-15:]
+        raw_history = chat_logs_ws.get_all_records()
+        memory = raw_history[-6:] # Keep context lean for stability
 
-        # 🧠 THE FIX: Use system_instruction to avoid role conflicts
-        sys_instr = f"""
-        You are 'Routine Flow Architect' for Sriniket. 
-        Context: Sriniket is recovering from a bike accident. 
-        Timetable Context: {json.dumps(timetable)}. 
+        # 2. Build the "Safe-Prompt" (Combines system info with the first message)
+        system_context = f"You are 'Routine Flow Architect' for Sriniket. He has a leg/arm injury. TIMETABLE: {json.dumps(timetable)}. If pain is mentioned, prioritize rest. Output JSON for changes: ACTION_RECS: {{\"action_target\": \"...\", \"new_val\": \"...\", \"reason\": \"...\"}}"
         
-        Rules:
-        1. If he mentions pain/injury, prioritize rest.
-        2. Suggest schedule changes ONLY via this JSON tag: 
-           ACTION_RECS: {{"action_target": "Activity Name", "new_val": "0.5h", "reason": "..."}}
-        """
+        model = genai.GenerativeModel('gemini-pro') # Using the most stable model name
 
-        model = genai.GenerativeModel(
-            model_name='gemini-1.5-flash', 
-            system_instruction=sys_instr
-        )
-
-        # Build alternating history
+        # 3. Format history with a fallback for empty sheets
         formatted_history = []
         for m in memory:
             role = "user" if m['Role'].lower() == 'user' else "model"
             formatted_history.append({"role": role, "parts": [m['Message']]})
-        
-        # Gemini requires history to start with 'user'. 
-        # If the first item in our memory is 'model', we skip it.
+
+        # Ensure history starts with user and alternates
         if formatted_history and formatted_history[0]['role'] == 'model':
             formatted_history.pop(0)
 
+        # 4. Execute Chat with Context injection in the first message if history is empty
         chat_session = model.start_chat(history=formatted_history)
-        response = chat_session.send_message(user_msg)
+        
+        final_prompt = user_msg
+        if not formatted_history:
+            final_prompt = f"SYSTEM_INSTRUCTIONS: {system_context}\n\nUSER_MESSAGE: {user_msg}"
+
+        response = chat_session.send_message(final_prompt)
         ai_text = response.text
 
-        # Log to Sheets
+        # 5. Save to Sheets
         ts = datetime.now(IST).strftime('%Y-%m-%d %H:%M')
         chat_logs_ws.append_rows([[ts, "User", user_msg], [ts, "AI", ai_text]])
 
         return jsonify({"status": "success", "text": ai_text}), 200
     except Exception as e:
-        print(f"Server Error: {str(e)}")
-        return jsonify({"status": "error", "message": str(e)}), 500
+        # 🛡️ THE DEBUGGER: This will show you exactly what's wrong in the browser console
+        return jsonify({"status": "error", "message": f"QA_DEBUG: {str(e)}"}), 500
+
+@app.route('/log_session', methods=['POST'])
+def log_session():
+    try:
+        d = request.json
+        ts = datetime.now(IST).strftime('%Y-%m-%d %H:%M')
+        logs_ws.append_row([ts, d.get('activity'), d.get('planned_duration'), d.get('actual_duration'), d.get('time_debt', 0)])
+        return jsonify({"status": "success"}), 200
+    except Exception as e: return jsonify({"status": "error"}), 500
 
 @app.route('/clear_chat', methods=['DELETE'])
 def clear_chat():
@@ -153,9 +145,8 @@ def clear_chat():
         records = chat_logs_ws.get_all_values()
         if len(records) > 1:
             chat_logs_ws.delete_rows(2, len(records))
-            return jsonify({"status": "success"}), 200
         return jsonify({"status": "success"}), 200
-    except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
+    except Exception as e: return jsonify({"status": "error"}), 500
 
 @app.route('/update_timetable', methods=['PATCH'])
 def update_timetable():
