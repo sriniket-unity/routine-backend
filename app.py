@@ -8,6 +8,7 @@ import os
 import google.generativeai as genai
 import json
 import pytz
+import re  # New for Case-Insensitive Search
 
 app = Flask(__name__)
 CORS(app)
@@ -41,7 +42,11 @@ init_sheets()
 @app.route('/', methods=['GET'])
 def health():
     status = "Ready" if logs_ws else "Error"
-    return jsonify({"service": "Routine Flow Backend", "version": "4.1", "sheets": status}), 200
+    return jsonify({
+        "service": "Routine Flow Backend",
+        "version": "4.3",
+        "sheets": status
+    }), 200
 
 @app.route('/get_schedule', methods=['GET'])
 def get_schedule():
@@ -55,7 +60,6 @@ def get_schedule():
 
 @app.route('/log_session', methods=['POST'])
 def log_session():
-    """Logs a single session. Units: Decimal Hours."""
     try:
         d = request.json
         ts = datetime.now(IST).strftime('%Y-%m-%d %H:%M')
@@ -72,7 +76,6 @@ def log_session():
 
 @app.route('/bulk_log', methods=['POST'])
 def bulk_log():
-    """Batch processing for test data. Units: Decimal Hours."""
     try:
         data_list = request.json 
         ts = datetime.now(IST).strftime('%Y-%m-%d %H:%M')
@@ -92,14 +95,12 @@ def bulk_log():
 
 @app.route('/analyze_patterns', methods=['GET'])
 def analyze_patterns():
-    """AI Analysis updated for V4.1 to prioritize Hours."""
     try:
         recs = logs_ws.get_all_records()
         if len(recs) < 3: 
             return jsonify({"status": "success", "analysis": None}), 200
         
         log_context = json.dumps(recs[-10:])
-        # QA NOTE: The prompt now explicitly forces Gemini to think in HOURS.
         prompt = f"""
         Analyze these routine logs for Sriniket: {log_context}. 
         IMPORTANT: All durations (planned, actual, and debt) are in DECIMAL HOURS.
@@ -124,11 +125,18 @@ def update_timetable():
         data = request.json
         activity = data.get('activity')
         new_val = data.get('new_val')
-        cell = timetable_ws.find(activity)
+        
+        # --- 🛠️ V4.3 FIX: Case-Insensitive Regex Search ---
+        # This finds "Gym" even if the AI sends "GYM" or "gym"
+        pattern = re.compile(rf'^{re.escape(activity)}$', re.IGNORECASE)
+        cell = timetable_ws.find(pattern)
+        
         if cell:
+            # Duration is in the next column
             timetable_ws.update_cell(cell.row, cell.col + 1, new_val)
-            return jsonify({"status": "success", "message": f"Updated {activity}"}), 200
-        return jsonify({"status": "error", "message": "Activity not found"}), 404
+            return jsonify({"status": "success", "message": f"Updated {activity} to {new_val}"}), 200
+        
+        return jsonify({"status": "error", "message": f"Activity '{activity}' not found in sheet"}), 404
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
