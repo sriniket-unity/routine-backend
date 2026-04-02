@@ -17,7 +17,7 @@ IST = pytz.timezone('Asia/Kolkata')
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 model = genai.GenerativeModel('gemini-3-flash-preview')
 
-# --- 📊 GOOGLE SHEETS CONNECTION ---
+# --- 📊 SHEETS CONNECTION ---
 timetable_ws = None
 logs_ws = None
 
@@ -40,8 +40,7 @@ init_sheets()
 
 @app.route('/', methods=['GET'])
 def health():
-    status = "Ready" if logs_ws else "Error"
-    return jsonify({"service": "Routine Flow Backend", "sheets": status}), 200
+    return jsonify({"service": "Routine Flow Backend", "status": "Online"}), 200
 
 @app.route('/get_schedule', methods=['GET'])
 def get_schedule():
@@ -58,13 +57,7 @@ def log_session():
     try:
         d = request.json
         ts = datetime.now(IST).strftime('%Y-%m-%d %H:%M')
-        logs_ws.append_row([
-            ts, 
-            d.get('activity'), 
-            d.get('planned_duration'), 
-            d.get('actual_duration'), 
-            d.get('time_debt', 0)
-        ])
+        logs_ws.append_row([ts, d.get('activity'), d.get('planned_duration'), d.get('actual_duration'), d.get('time_debt', 0)])
         return jsonify({"status": "success"}), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -74,20 +67,9 @@ def analyze_patterns():
     try:
         recs = logs_ws.get_all_records()
         if len(recs) < 3: 
-            return jsonify({"status": "success", "analysis": None, "message": "Need more logs"}), 200
+            return jsonify({"status": "success", "analysis": None}), 200
         
-        log_context = json.dumps(recs[-10:])
-        prompt = f"""
-        Analyze these routine logs for Sriniket: {log_context}
-        Identify ONE performance trend. 
-        Return ONLY a JSON object:
-        {{
-            "title": "Insight Title",
-            "message": "Specific advice",
-            "action_target": "Activity Name",
-            "new_val": "Suggested duration (e.g. 1.0h)"
-        }}
-        """
+        prompt = f"Analyze these logs: {json.dumps(recs[-10:])}. Provide ONE performance insight. Return ONLY JSON: {{\"title\":\"...\",\"message\":\"...\",\"action_target\":\"...\",\"new_val\":\"...\"}}"
         response = model.generate_content(prompt)
         clean_text = response.text.strip().replace("```json", "").replace("```", "")
         return jsonify({"status": "success", "analysis": json.loads(clean_text)})
@@ -100,12 +82,10 @@ def update_timetable():
         data = request.json
         activity = data.get('activity')
         new_val = data.get('new_val')
-        
         cell = timetable_ws.find(activity)
         if cell:
             timetable_ws.update_cell(cell.row, cell.col + 1, new_val)
-            return jsonify({"status": "success", "message": f"Updated {activity} to {new_val}"}), 200
-        
+            return jsonify({"status": "success", "message": f"Updated {activity}"}), 200
         return jsonify({"status": "error", "message": "Activity not found"}), 404
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
