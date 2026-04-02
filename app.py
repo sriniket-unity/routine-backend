@@ -9,13 +9,10 @@ import google.generativeai as genai
 import json
 import pytz
 import re 
-import logging
+import traceback
 
 app = Flask(__name__)
 CORS(app)
-
-# 📝 Enable Logging
-logging.basicConfig(level=logging.INFO)
 
 # --- 🌍 CONFIGURATION ---
 IST = pytz.timezone('Asia/Kolkata')
@@ -36,13 +33,10 @@ def init_sheets():
             timetable_ws = sheet.worksheet("Timetable")
             logs_ws = sheet.worksheet("Logs")
             chat_logs_ws = sheet.worksheet("ChatLogs")
-            app.logger.info("✅ Sheets Status: All Systems Operational.")
-            return True
+            print("✅ Sheets Status: All Systems Operational.")
     except Exception as e:
-        app.logger.error(f"❌ Sheets Error: {e}")
-        return False
+        print(f"❌ Sheets Error: {e}")
 
-# Initialize on boot
 init_sheets()
 
 # --- 🛠️ HELPERS ---
@@ -57,14 +51,15 @@ def sanitize_ts(ts_str):
 
 @app.route('/', methods=['GET'])
 def health():
-    return jsonify({"service": "Routine Flow Architect", "version": "5.4.5", "status": "Ready"}), 200
+    return jsonify({"service": "Routine Flow Architect", "version": "5.4.8", "status": "Ready"}), 200
 
 @app.route('/get_schedule', methods=['GET'])
 def get_schedule():
     try:
         if not timetable_ws: init_sheets()
         all_val = timetable_ws.get_all_values()
-        headers = [h.strip() for h in all_val[1]] 
+        # Row 2 contains headers
+        headers = [h.strip() for h in all_val[1] if h.strip()] 
         data = [dict(zip(headers, r)) for r in all_val[2:] if any(r)]
         return jsonify({"status": "success", "data": data})
     except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
@@ -73,8 +68,13 @@ def get_schedule():
 def get_analytics():
     try:
         if not logs_ws: init_sheets()
-        all_logs = logs_ws.get_all_records()
-        if not all_logs: return jsonify({"status": "success", "overall": None, "week": None}), 200
+        # Manually parse logs to avoid empty header issues
+        raw_logs = logs_ws.get_all_values()
+        if len(raw_logs) <= 1: return jsonify({"status": "success", "overall": None, "week": None}), 200
+        
+        headers = [h.strip() for h in raw_logs[0] if h.strip()]
+        all_logs = [dict(zip(headers, r)) for r in raw_logs[1:] if any(r)]
+        
         now = datetime.now(IST)
         start_of_week = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0)
 
@@ -92,66 +92,52 @@ def get_analytics():
                 except: continue
             return {"study": round(total_study, 1), "adherence": adherence, "debt": round(total_debt, 1), "chart": chart}
 
-        overall = process_subset(all_logs)
-        week_logs = [r for r in all_logs if IST.localize(datetime.strptime(sanitize_ts(r.get('Timestamp', '')), '%Y-%m-%d %H:%M')) >= start_of_week]
-        return jsonify({"status": "success", "overall": overall, "week": process_subset(week_logs)}), 200
-    except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "success", "overall": process_subset(all_logs), "week": process_subset([r for r in all_logs if IST.localize(datetime.strptime(sanitize_ts(r.get('Timestamp', '')), '%Y-%m-%d %H:%M')) >= start_of_week])}), 200
+    except Exception as e: return jsonify({"status": "error", "message": f"Analytics Error: {str(e)}"}), 500
 
-# --- 🤖 THE BULLETPROOF CHAT ENGINE ---
 @app.route('/chat', methods=['POST'])
 def chat():
     try:
-        # Re-init if connection dropped
         if not chat_logs_ws: init_sheets()
-            
         user_msg = request.json.get('message')
+
+        # 1. Resilient Timetable Fetch
+        all_tt = timetable_ws.get_all_values()
+        tt_headers = [h.strip() for h in all_tt[1] if h.strip()]
+        lean_tt = [dict(zip(tt_headers, r)) for r in all_tt[2:] if any(r)][-10:]
+
+        # 2. Resilient Chat Memory Fetch
+        all_chat = chat_logs_ws.get_all_values()
+        if len(all_chat) > 1:
+            chat_headers = [h.strip() for h in all_chat[0] if h.strip()]
+            recent_memory = [dict(zip(chat_headers, r)) for r in all_chat[1:] if any(r)][-6:]
+        else:
+            recent_memory = []
+
+        # 3. Prompt Construction
+        prompt = f"""
+        CONTEXT: Routine Flow Architect. Sriniket is recovering from a bike accident.
+        TIMETABLE: {json.dumps(lean_tt)}
+        HISTORY: {json.dumps(recent_memory)}
         
-        # 1. Fetch Context
-        timetable = timetable_ws.get_all_records()[-15:]
-        raw_history = chat_logs_ws.get_all_records()
-        memory = raw_history[-8:] # Keep history clean
-
-        # 2. Setup System Instruction
-        sys_instr = (
-            f"You are 'Routine Flow Architect' for Sriniket. He is recovering from an injury. "
-            f"CURRENT TIMETABLE: {json.dumps(timetable)}. "
-            f"RULES: 1. Prioritize rest. 2. To suggest changes, MUST use ACTION_RECS: "
-            f"{{\"action_target\": \"...\", \"new_val\": \"...\", \"reason\": \"...\"}}"
-        )
+        USER: {user_msg}
         
-        # 3. Model Initialization (Using Gemini 1.5 Flash)
-        model = genai.GenerativeModel(
-            model_name='gemini-1.5-flash',
-            system_instruction=sys_instr
-        )
+        RULES:
+        1. Use ACTION_RECS: {{"action_target": "...", "new_val": "...", "reason": "..."}} for changes.
+        """
 
-        # 4. Hardened Role Alternation Logic
-        # Gemini history MUST start with 'user' and alternate 'user' -> 'model'
-        history = []
-        for m in memory:
-            role = "user" if m['Role'].lower() == 'user' else "model"
-            # Prevent consecutive identical roles
-            if history and history[-1]['role'] == role:
-                continue
-            history.append({"role": role, "parts": [m['Message']]})
-
-        # Ensure history doesn't end with 'user' (because the next send_message is 'user')
-        if history and history[-1]['role'] == "user":
-            history.append({"role": "model", "parts": ["Understood, standing by for your next update."]})
-
-        # 5. Execute Chat
-        chat_session = model.start_chat(history=history)
-        response = chat_session.send_message(user_msg)
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        response = model.generate_content(prompt)
         ai_text = response.text
 
-        # 6. Save to Sheets
+        # 4. Save Current Interaction
         ts = datetime.now(IST).strftime('%Y-%m-%d %H:%M')
         chat_logs_ws.append_rows([[ts, "User", user_msg], [ts, "AI", ai_text]])
 
         return jsonify({"status": "success", "text": ai_text}), 200
 
     except Exception as e:
-        app.logger.error(f"V5.4.5 CRASH: {str(e)}")
+        app.logger.error(traceback.format_exc())
         return jsonify({"status": "error", "message": f"QA_DEBUG: {str(e)}"}), 500
 
 @app.route('/log_session', methods=['POST'])
