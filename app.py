@@ -1,3 +1,4 @@
+# start of version v5.7.0
 from dotenv import load_dotenv
 load_dotenv()
 from flask import Flask, request, jsonify
@@ -65,7 +66,7 @@ def parse_time_to_minutes(t_str):
         return h * 60 + m
     except: return 0
 
-# --- ☁️ CLOUD SYNC STATE (V5.6.1 UPDATED) ---
+# --- ☁️ CLOUD SYNC STATE ---
 cloud_state = {
     "state": "READY",
     "activity": None,
@@ -78,7 +79,7 @@ cloud_state = {
 def health():
     return jsonify({
         "service": "Routine Flow Architect", 
-        "version": "5.6.1", 
+        "version": "5.7.0", 
         "status": "Online",
         "model": "gemini-3-flash-preview"
     }), 200
@@ -107,7 +108,6 @@ def get_schedule():
         headers = [h.strip() for h in all_val[1] if h.strip()] 
         data = [dict(zip(headers, r)) for r in all_val[2:] if any(r)]
         
-        # Calculate Current Activity
         now = datetime.now(IST)
         curMin = (now.hour * 60) + now.minute
         cur_session = None
@@ -185,14 +185,18 @@ def chat():
             memory = [dict(zip(chat_headers, r)) for r in all_chat[1:] if any(r)][-6:]
 
         prompt = f"""
-        System: You are 'Routine Flow Architect' for Sriniket.
+        System: You are 'Routine Flow Architect', an AI assistant for Sriniket.
         Context: Sriniket is recovering from a bike accident.
-        Schedule: {json.dumps(lean_tt)}
+        Schedule Context: {json.dumps(lean_tt)}
         Memory: {json.dumps(memory)}
+        
+        CRITICAL INSTRUCTION: 
+        1. If the user asks a direct/simple question (e.g., "what model are you?", "what is 2+2?"), answer it DIRECTLY and CONCISELY. Do NOT add unsolicited advice about their schedule or recovery.
+        2. ONLY provide schedule recommendations or mention the recovery context IF the user explicitly asks for advice, schedule changes, or discusses their health/routine.
         
         User Input: {user_msg}
         
-        Mandatory Change Format:
+        Mandatory Change Format (Use ONLY if making schedule changes):
         ACTION_RECS: {{"action_target": "Activity Name", "new_val": "0.5h", "reason": "Rest and recovery"}}
         """
         model = genai.GenerativeModel('gemini-3-flash-preview')
@@ -238,3 +242,4 @@ def update_timetable():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+# end of version v5.7.0

@@ -18,7 +18,7 @@
         .glass-panel { background: rgba(30,30,30,0.7); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,0.05); }
         .tab-active { color: white !important; border-bottom: 2px solid white !important; }
         .tab-inactive { color: rgba(255,255,255,0.3) !important; border-bottom: 2px solid transparent !important; }
-        .chat-container { height: calc(100vh - 220px); scrollbar-width: none; }
+        .chat-container { height: calc(100vh - 120px); scrollbar-width: none; }
         .chat-bubble-ai { background: rgba(255,255,255,0.05); border-radius: 0 1.5rem 1.5rem 1.5rem; }
         .chat-bubble-user { background: #FFFFFF; color: #000000; border-radius: 1.5rem 1.5rem 0 1.5rem; }
         .stat-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 1.5rem; padding: 1.5rem; }
@@ -27,8 +27,13 @@
         ::-webkit-scrollbar { display: none; }
         @keyframes pulse-sync { 0% { opacity: 0.2; } 50% { opacity: 1; } 100% { opacity: 0.2; } }
         .sync-active { animation: pulse-sync 2s infinite; color: #4ade80; }
-        
         #toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 1000; display: flex; flex-direction: column; gap: 10px; }
+        
+        /* Thinking Animation Styling */
+        .typing-dot { animation: typing 1.4s infinite ease-in-out both; }
+        .typing-dot:nth-child(1) { animation-delay: -0.32s; }
+        .typing-dot:nth-child(2) { animation-delay: -0.16s; }
+        @keyframes typing { 0%, 80%, 100% { transform: scale(0); opacity: 0.3; } 40% { transform: scale(1); opacity: 1; } }
     </style>
 </head>
 <body class="font-sans">
@@ -67,16 +72,32 @@
             </div>
         </section>
 
-        <section id="view-insights" class="hidden chat-container p-6">
-            <div class="flex flex-col h-full bg-white/5 rounded-3xl p-6 relative">
-                <div class="flex justify-between items-center mb-4 border-b border-white/10 pb-4">
-                    <h2 class="text-xs font-black uppercase tracking-widest opacity-50">Secure Connection</h2>
-                    <button onclick="clearChatHistory()" class="text-[10px] uppercase font-black text-debt border border-debt/30 px-3 py-1 rounded-lg hover:bg-debt/10">Wipe Memory</button>
+        <section id="view-insights" class="hidden chat-container p-6 pt-0">
+            <div class="flex h-full gap-6">
+                <div class="hidden md:flex flex-col w-64 bg-white/5 rounded-3xl p-4 border border-white/5">
+                    <h3 class="text-[10px] font-black uppercase tracking-widest text-white/50 mb-4 px-2">Architect Link</h3>
+                    <div class="flex-1 overflow-y-auto space-y-2">
+                        <div class="p-4 bg-white/10 rounded-xl text-xs font-bold text-white/80 cursor-default border border-white/10 shadow-lg">Active Memory Session</div>
+                    </div>
+                    <div class="pt-4 border-t border-white/10 mt-auto space-y-2">
+                        <button onclick="clearChatHistory()" class="w-full flex items-center justify-center gap-2 text-[10px] uppercase font-black text-debt border border-debt/30 px-3 py-4 rounded-xl hover:bg-debt/10 transition">
+                            Wipe Memory
+                        </button>
+                    </div>
                 </div>
-                <div id="chat-window" class="flex-1 overflow-y-auto space-y-4 pb-20"></div>
-                <div class="absolute bottom-6 left-6 right-6 flex gap-2">
-                    <input id="chat-input" type="text" onkeypress="if(event.key==='Enter')sendMessage()" placeholder="Consult Architect..." class="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-sm outline-none">
-                    <button onclick="sendMessage()" class="bg-white text-black px-6 rounded-2xl font-black text-[10px] uppercase">Send</button>
+
+                <div class="flex-1 flex flex-col bg-[#0A0A0A] rounded-3xl border border-white/5 relative overflow-hidden">
+                    <div id="chat-window" class="flex-1 overflow-y-auto p-6 space-y-6 pb-32">
+                        </div>
+                    
+                    <div class="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-[#0A0A0A] via-[#0A0A0A] to-transparent">
+                        <div class="flex items-center gap-3 bg-[#1E1E1E] rounded-full p-2 border border-white/10 focus-within:border-white/30 transition-colors shadow-2xl max-w-3xl mx-auto">
+                            <input id="chat-input" type="text" onkeypress="if(event.key==='Enter')sendMessage()" placeholder="Consult Architect..." class="flex-1 bg-transparent text-sm text-white px-4 py-3 outline-none placeholder-white/30">
+                            <button onclick="sendMessage()" class="bg-white text-black p-3 rounded-full hover:bg-gray-200 transition flex items-center justify-center">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </section>
@@ -88,22 +109,26 @@
             </div>
             
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <div class="stat-card text-center">
-                    <div class="text-[10px] text-white/50 font-black uppercase mb-2">Total Study (Hrs)</div>
-                    <div id="stat-study-hrs" class="text-4xl font-black">0.0</div>
-                    <div class="w-full bg-white/10 h-2 rounded-full mt-4 overflow-hidden"><div id="study-progress-bar" class="bg-white h-full w-0 transition-all duration-1000"></div></div>
+                <div class="stat-card text-center flex flex-col justify-center">
+                    <div class="text-[10px] text-white/50 font-black uppercase mb-4 tracking-widest">Total Study (Hrs)</div>
+                    <div id="stat-study-hrs" class="text-5xl font-black">0.0</div>
+                    <div class="w-full bg-white/10 h-2 rounded-full mt-6 overflow-hidden"><div id="study-progress-bar" class="bg-white h-full w-0 transition-all duration-1000"></div></div>
                 </div>
-                <div class="stat-card text-center relative flex flex-col items-center justify-center">
-                    <div class="text-[10px] text-white/50 font-black uppercase absolute top-6">Adherence</div>
-                    <svg class="w-32 h-32 transform -rotate-90">
-                        <circle cx="64" cy="64" r="54" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="8"></circle>
-                        <circle id="adherence-circle" cx="64" cy="64" r="54" fill="none" stroke="#fff" stroke-width="8" stroke-dasharray="339.29" stroke-dashoffset="339.29" class="transition-all duration-1000"></circle>
-                    </svg>
-                    <div id="circle-pct" class="absolute text-2xl font-black mt-4">0%</div>
+                
+                <div class="stat-card flex flex-col items-center justify-center py-8">
+                    <div class="text-[10px] text-white/50 font-black uppercase mb-6 tracking-widest">Adherence</div>
+                    <div class="relative flex items-center justify-center w-36 h-36">
+                        <svg class="w-full h-full transform -rotate-90">
+                            <circle cx="72" cy="72" r="60" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="12"></circle>
+                            <circle id="adherence-circle" cx="72" cy="72" r="60" fill="none" stroke="#FFFFFF" stroke-width="12" stroke-dasharray="377" stroke-dashoffset="377" stroke-linecap="round" class="transition-all duration-1000 ease-out drop-shadow-[0_0_10px_rgba(255,255,255,0.5)]"></circle>
+                        </svg>
+                        <div id="circle-pct" class="absolute text-3xl font-black tracking-tighter">0%</div>
+                    </div>
                 </div>
-                <div class="stat-card text-center">
-                    <div class="text-[10px] text-white/50 font-black uppercase mb-2">Time Debt (Hrs)</div>
-                    <div id="stat-debt" class="text-4xl font-black text-debt">0.0</div>
+
+                <div class="stat-card text-center flex flex-col justify-center">
+                    <div class="text-[10px] text-white/50 font-black uppercase mb-4 tracking-widest">Time Debt (Hrs)</div>
+                    <div id="stat-debt" class="text-5xl font-black text-debt">0.0</div>
                 </div>
             </div>
 
@@ -126,7 +151,6 @@
 
     <script>
         const BackendAPI = "https://routine-backend-7yn2.onrender.com";
-        // V5.6.1: Added accumulated_seconds state
         let AppState = { currentActivity: null, allActivities: [], timerSeconds: 0, totalSeconds: 0, timerState: 'READY', timerInterval: null, accumulated_seconds: 0 };
         let localChatHistory = JSON.parse(localStorage.getItem('routine_chat_cache')) || [];
         let lastAppliedChange = null;
@@ -134,13 +158,11 @@
         document.addEventListener('DOMContentLoaded', () => {
             fetchSchedule();
             setInterval(updateHeaderClock, 1000);
-
-            // Start Cloud Polling every 5 seconds
             setInterval(syncWithCloud, 5000);
-            syncWithCloud(); // Check immediately on load
+            syncWithCloud();
 
             if(localChatHistory.length === 0) {
-                appendBubble('ai', "System: Memory Loaded. Architect Engine V5.6.1 (Sync & Pause) online.");
+                appendBubble('ai', "System: Memory Loaded. Architect Engine V5.7.0 online.");
             } else {
                 localChatHistory.forEach(m => appendBubble(m.type, m.text));
             }
@@ -168,7 +190,6 @@
                         updateTimerDisplay();
                     }
 
-                    // V5.6.1: Reload Local State (Handles Refresh while paused or running)
                     const savedStart = localStorage.getItem('routine_timer_start');
                     const savedActivity = localStorage.getItem('routine_timer_activity');
                     const savedAcc = localStorage.getItem('routine_timer_accumulated');
@@ -188,15 +209,10 @@
                     }
                 } else {
                     document.getElementById('current-activity').innerText = "DB ERROR";
-                    document.getElementById('prev-activity').innerText = "CHECK";
-                    document.getElementById('next-activity').innerText = "RENDER LOGS";
                 }
-            } catch(e) { 
-                document.getElementById('current-activity').innerText = "SERVER DOWN"; 
-            }
+            } catch(e) { document.getElementById('current-activity').innerText = "SERVER DOWN"; }
         }
 
-        // --- CLOUD SYNC ENGINE V5.6.1 ---
         async function syncWithCloud() {
             try {
                 const res = await fetch(`${BackendAPI}/get_state`);
@@ -207,16 +223,11 @@
 
                     if (indicator) {
                         indicator.innerText = ""; 
-                        if (cloud.state === 'RUNNING') {
-                            indicator.className = "text-[8px] tracking-widest uppercase sync-active";
-                        } else if (cloud.state === 'PAUSED') {
-                            indicator.className = "text-[8px] tracking-widest uppercase text-yellow-400";
-                        } else {
-                            indicator.className = "text-[8px] tracking-widest uppercase text-white/20";
-                        }
+                        if (cloud.state === 'RUNNING') indicator.className = "text-[8px] tracking-widest uppercase sync-active";
+                        else if (cloud.state === 'PAUSED') indicator.className = "text-[8px] tracking-widest uppercase text-yellow-400";
+                        else indicator.className = "text-[8px] tracking-widest uppercase text-white/20";
                     }
 
-                    // Task 2: Multi-Device Sync Logic
                     if (cloud.state === 'RUNNING' && cloud.start_time) {
                         if (AppState.timerState !== 'RUNNING') {
                             localStorage.setItem('routine_timer_start', cloud.start_time);
@@ -227,19 +238,14 @@
                             document.getElementById('btn-pause').innerText = "PAUSE";
                             startTimerLoop();
                         }
-                    } else if (cloud.state === 'READY' && AppState.timerState === 'RUNNING') {
-                         // If cloud says READY but local is RUNNING, someone checked out on another device.
                     } else if (cloud.state === 'PAUSED') {
                         if (AppState.timerState !== 'PAUSED') {
                             clearInterval(AppState.timerInterval);
                             AppState.timerState = 'PAUSED';
                             AppState.accumulated_seconds = cloud.accumulated_seconds || 0;
-                            
                             localStorage.setItem('routine_timer_accumulated', AppState.accumulated_seconds);
                             localStorage.removeItem('routine_timer_start');
                             document.getElementById('btn-pause').innerText = "RESUME";
-                            
-                            // Re-calculate visual timer based on the accumulated seconds
                             AppState.timerSeconds = AppState.totalSeconds - AppState.accumulated_seconds;
                             updateTimerDisplay();
                         }
@@ -251,13 +257,7 @@
                          location.reload(); 
                     }
                 }
-            } catch(e) {
-                const indicator = document.getElementById('sync-indicator');
-                if (indicator) {
-                    indicator.innerText = "OFFLINE";
-                    indicator.className = "text-[8px] tracking-widest uppercase text-red-500";
-                }
-            }
+            } catch(e) {}
         }
 
         function updateTimerDisplay() {
@@ -273,10 +273,8 @@
             AppState.timerInterval = setInterval(() => { 
                 const savedStart = parseInt(localStorage.getItem('routine_timer_start'));
                 const acc = parseInt(localStorage.getItem('routine_timer_accumulated')) || 0;
-                
                 if (savedStart) {
                     const elapsedSeconds = Math.floor((Date.now() - savedStart) / 1000);
-                    // Subtract both elapsed real-time AND previously paused accumulated time
                     AppState.timerSeconds = AppState.totalSeconds - (elapsedSeconds + acc);
                     if (AppState.timerSeconds < 0) AppState.timerSeconds = 0; 
                 }
@@ -289,105 +287,58 @@
                 AppState.timerState = 'RUNNING'; 
                 AppState.accumulated_seconds = 0;
                 const startTime = Date.now();
-
-                // 1. Save locally
                 localStorage.setItem('routine_timer_start', startTime);
                 localStorage.setItem('routine_timer_activity', AppState.currentActivity.Activity);
                 localStorage.setItem('routine_timer_accumulated', 0);
                 startTimerLoop();
                 document.getElementById('btn-pause').innerText = "PAUSE";
-
-                // 2. Broadcast to Cloud
                 try {
-                    await fetch(`${BackendAPI}/set_state`, {
-                        method: 'POST', headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({ state: 'RUNNING', activity: AppState.currentActivity.Activity, start_time: startTime, accumulated_seconds: 0 })
-                    });
+                    await fetch(`${BackendAPI}/set_state`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ state: 'RUNNING', activity: AppState.currentActivity.Activity, start_time: startTime, accumulated_seconds: 0 }) });
                     syncWithCloud();
-                } catch(e) { showToast("Failed to broadcast", "error"); }
+                } catch(e) {}
             } 
         }
 
-        // V5.6.1: PAUSE / RESUME LOGIC
         async function handlePauseResume() {
             if (AppState.timerState === 'READY') return;
-
             if (AppState.timerState === 'RUNNING') {
                 clearInterval(AppState.timerInterval);
                 AppState.timerState = 'PAUSED';
-                
                 const savedStart = parseInt(localStorage.getItem('routine_timer_start'));
-                if (savedStart) {
-                    const elapsed = Math.floor((Date.now() - savedStart) / 1000);
-                    AppState.accumulated_seconds += elapsed;
-                }
-                
+                if (savedStart) AppState.accumulated_seconds += Math.floor((Date.now() - savedStart) / 1000);
                 localStorage.setItem('routine_timer_accumulated', AppState.accumulated_seconds);
                 localStorage.removeItem('routine_timer_start');
                 document.getElementById('btn-pause').innerText = "RESUME";
-
-                try {
-                    await fetch(`${BackendAPI}/set_state`, {
-                        method: 'POST', headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({ state: 'PAUSED', activity: AppState.currentActivity.Activity, start_time: null, accumulated_seconds: AppState.accumulated_seconds })
-                    });
-                } catch(e) { showToast("Sync Error", "error"); }
-
+                try { await fetch(`${BackendAPI}/set_state`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ state: 'PAUSED', activity: AppState.currentActivity.Activity, start_time: null, accumulated_seconds: AppState.accumulated_seconds }) }); } catch(e) {}
             } else if (AppState.timerState === 'PAUSED') {
                 AppState.timerState = 'RUNNING';
                 const startTime = Date.now();
-                
                 localStorage.setItem('routine_timer_start', startTime);
                 document.getElementById('btn-pause').innerText = "PAUSE";
                 startTimerLoop();
-
-                try {
-                    await fetch(`${BackendAPI}/set_state`, {
-                        method: 'POST', headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({ state: 'RUNNING', activity: AppState.currentActivity.Activity, start_time: startTime, accumulated_seconds: AppState.accumulated_seconds })
-                    });
-                } catch(e) { showToast("Sync Error", "error"); }
+                try { await fetch(`${BackendAPI}/set_state`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ state: 'RUNNING', activity: AppState.currentActivity.Activity, start_time: startTime, accumulated_seconds: AppState.accumulated_seconds }) }); } catch(e) {}
             }
         }
 
         async function handleCheckOut(event) { 
-            if (AppState.timerState !== 'RUNNING') return;
             if (AppState.timerState === 'READY') return;
             clearInterval(AppState.timerInterval); 
-
-            // Calculate total time worked (combining actual time vs accumulated time)
             const workedSeconds = AppState.totalSeconds - AppState.timerSeconds;
             const actualDurationHrs = workedSeconds / 3600;
             const plannedDurationHrs = parseFloat(AppState.currentActivity.Duration);
             const timeDebt = Math.max(0, plannedDurationHrs - actualDurationHrs);
-
             localStorage.removeItem('routine_timer_start');
             localStorage.removeItem('routine_timer_activity');
             localStorage.removeItem('routine_timer_accumulated');
-
             event.target.innerText = "Saving...";
-
             try {
-                // 1. Log to Database
-                await fetch(`${BackendAPI}/log_session`, { 
-                    method: 'POST', headers: {'Content-Type': 'application/json'}, 
-                    body: JSON.stringify({ activity: AppState.currentActivity.Activity, planned_duration: plannedDurationHrs, actual_duration: actualDurationHrs, time_debt: timeDebt }) 
-                }); 
-
-                // 2. Broadcast Stop command to Cloud
-                await fetch(`${BackendAPI}/set_state`, {
-                    method: 'POST', headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ state: 'READY', activity: null, start_time: null, accumulated_seconds: 0 })
-                });
-
+                await fetch(`${BackendAPI}/log_session`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ activity: AppState.currentActivity.Activity, planned_duration: plannedDurationHrs, actual_duration: actualDurationHrs, time_debt: timeDebt }) }); 
+                await fetch(`${BackendAPI}/set_state`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ state: 'READY', activity: null, start_time: null, accumulated_seconds: 0 }) });
                 location.reload(); 
-            } catch(e) {
-                showToast("Save Failed", "error");
-                event.target.innerText = "Check-Out";
-            }
+            } catch(e) { event.target.innerText = "Check-Out"; }
         }
 
-        // --- Architect Chat Logic ---
+        // --- Architect Chat Logic with Thinking Animation ---
         async function sendMessage(overrideText = null) {
             const input = document.getElementById('chat-input');
             const msg = overrideText || input.value.trim();
@@ -397,7 +348,8 @@
             if(!overrideText) input.value = '';
 
             const loadingId = "loading-" + Date.now();
-            appendBubble('ai', "Thinking...", loadingId);
+            const thinkingHTML = `<div class="flex space-x-1 items-center h-5"><div class="w-1.5 h-1.5 bg-white/50 rounded-full typing-dot"></div><div class="w-1.5 h-1.5 bg-white/50 rounded-full typing-dot"></div><div class="w-1.5 h-1.5 bg-white/50 rounded-full typing-dot"></div></div>`;
+            appendBubble('ai', thinkingHTML, loadingId);
 
             try {
                 const res = await fetch(`${BackendAPI}/chat`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ message: msg }) });
@@ -416,8 +368,14 @@
         function appendBubble(type, text, id = null) {
             const win = document.getElementById('chat-window'), div = document.createElement('div');
             if(id) div.id = id;
-            div.className = type === 'ai' ? 'chat-bubble-ai p-5 max-w-[85%] text-sm leading-relaxed self-start animate-in fade-in slide-in-from-left-2' : 'chat-bubble-user p-5 max-w-[85%] text-sm leading-relaxed self-end ml-auto animate-in fade-in slide-in-from-right-2';
-            div.innerHTML = text.replace(/\n/g, '<br>');
+            div.className = type === 'ai' ? 'chat-bubble-ai p-5 max-w-[85%] text-sm leading-relaxed self-start animate-in fade-in slide-in-from-left-2 shadow-xl' : 'chat-bubble-user p-5 max-w-[85%] text-sm leading-relaxed self-end ml-auto animate-in fade-in slide-in-from-right-2 shadow-xl';
+            
+            if (text.includes('typing-dot')) {
+                div.innerHTML = text; // Inject HTML for thinking animation
+            } else {
+                div.innerHTML = text.replace(/\n/g, '<br>');
+            }
+            
             win.appendChild(div);
             win.scrollTop = win.scrollHeight;
         }
@@ -450,7 +408,7 @@
 
         function renderActionCard(data) {
             const win = document.getElementById('chat-window'), div = document.createElement('div');
-            div.className = "stat-card border-white/20 p-6 space-y-4 max-w-[85%] animate-in zoom-in-95 self-start ml-4 mt-2";
+            div.className = "stat-card border-white/20 p-6 space-y-4 max-w-[85%] animate-in zoom-in-95 self-start ml-4 mt-2 shadow-xl";
             div.innerHTML = `<span class="text-[9px] font-black text-white/30 uppercase tracking-widest">Architect Suggestion</span><h5 class="text-sm font-bold text-white">${data.action_target} ➔ ${data.new_val}</h5><p class="text-[11px] text-white/50 italic">"${data.reason}"</p><div class="flex space-x-2"><button id="btn-apply" onclick="executeAdjustment(event, '${data.action_target}', '${data.new_val}')" class="flex-1 bg-white text-black py-3 rounded-xl font-black text-[10px] uppercase transition hover:bg-gray-200">Confirm</button><button onclick="this.parentElement.parentElement.remove()" class="px-5 py-3 border border-white/10 rounded-xl text-[10px] font-black uppercase text-white hover:bg-white/5 transition">Ignore</button></div>`;
             win.appendChild(div);
             win.scrollTop = win.scrollHeight;
@@ -462,7 +420,6 @@
             btn.disabled = true;
             const original = AppState.allActivities.find(a => a.Activity.toLowerCase() === activity.toLowerCase());
             const oldVal = original ? original.Duration : "1.0h";
-
             const res = await fetch(`${BackendAPI}/update_timetable`, { method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ activity, new_val: newVal }) });
             if(res.ok) {
                 lastAppliedChange = { activity, oldVal };
@@ -485,7 +442,6 @@
             }
         }
 
-        // --- Analytics Logic ---
         async function fetchAnalytics() {
             try {
                 const res = await fetch(`${BackendAPI}/get_analytics`);
@@ -508,7 +464,8 @@
             document.getElementById('stat-debt').innerText = data.debt;
             document.getElementById('study-progress-bar').style.width = Math.min(100, (data.study / 10) * 100) + "%";
             
-            const offset = 339.29 - (339.29 * data.adherence) / 100;
+            // Fixed SVG Adherence calculation
+            const offset = 377 - (377 * data.adherence) / 100;
             document.getElementById('adherence-circle').style.strokeDashoffset = offset;
             document.getElementById('circle-pct').innerText = data.adherence + "%";
             
