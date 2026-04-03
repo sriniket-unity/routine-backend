@@ -1,4 +1,4 @@
-# start of version v5.7.0
+# start of version v5.8.0
 from dotenv import load_dotenv
 load_dotenv()
 from flask import Flask, request, jsonify
@@ -66,6 +66,12 @@ def parse_time_to_minutes(t_str):
         return h * 60 + m
     except: return 0
 
+def safe_float(val):
+    try:
+        if not val or str(val).strip() == '': return 0.0
+        return float(val)
+    except: return 0.0
+
 # --- ☁️ CLOUD SYNC STATE ---
 cloud_state = {
     "state": "READY",
@@ -79,7 +85,7 @@ cloud_state = {
 def health():
     return jsonify({
         "service": "Routine Flow Architect", 
-        "version": "5.7.0", 
+        "version": "5.8.0", 
         "status": "Online",
         "model": "gemini-3-flash-preview"
     }), 200
@@ -148,15 +154,15 @@ def get_analytics():
 
         def process_subset(subset):
             if not subset: return {"study": 0, "adherence": 0, "debt": 0, "chart": [0.0]*7}
-            total_study = sum(float(r.get('Actual (hrs)') or 0) for r in subset)
-            total_debt = sum(float(r.get('Time Debt') or 0) for r in subset)
-            completed = sum(1 for r in subset if float(r.get('Actual (hrs)') or 0) > 0)
+            total_study = sum(safe_float(r.get('Actual (hrs)')) for r in subset)
+            total_debt = sum(safe_float(r.get('Time Debt')) for r in subset)
+            completed = sum(1 for r in subset if safe_float(r.get('Actual (hrs)')) > 0)
             adherence = round((completed / len(subset)) * 100)
             chart = [0.0] * 7
             for r in subset:
                 try:
                     dt = datetime.strptime(sanitize_ts(r.get('Timestamp', '')), '%Y-%m-%d %H:%M')
-                    chart[dt.weekday()] += float(r.get('Actual (hrs)') or 0)
+                    chart[dt.weekday()] += safe_float(r.get('Actual (hrs)'))
                 except: continue
             return {"study": round(total_study, 1), "adherence": adherence, "debt": round(total_debt, 1), "chart": chart}
 
@@ -165,7 +171,9 @@ def get_analytics():
             "overall": process_subset(all_logs), 
             "week": process_subset([r for r in all_logs if IST.localize(datetime.strptime(sanitize_ts(r.get('Timestamp', '')), '%Y-%m-%d %H:%M')) >= start_of_week])
         }), 200
-    except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
+    except Exception as e: 
+        app.logger.error(traceback.format_exc())
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/chat', methods=['POST'])
 def chat():
@@ -219,6 +227,35 @@ def log_session():
         return jsonify({"status": "success"}), 200
     except Exception as e: return jsonify({"status": "error"}), 500
 
+@app.route('/bulk_log', methods=['POST'])
+def bulk_log():
+    try:
+        if not logs_ws: init_sheets()
+        if not logs_ws: return jsonify({"status": "error", "message": "DB not connected"}), 500
+        
+        data = request.json
+        if not isinstance(data, list):
+            return jsonify({"status": "error", "message": "Payload must be a JSON array"}), 400
+        
+        rows_to_insert = []
+        for d in data:
+            ts = datetime.now(IST).strftime('%Y-%m-%d %H:%M')
+            rows_to_insert.append([
+                ts, 
+                d.get('activity', 'Unknown'), 
+                d.get('planned_duration', 0), 
+                d.get('actual_duration', 0), 
+                d.get('time_debt', 0)
+            ])
+        
+        if rows_to_insert:
+            logs_ws.append_rows(rows_to_insert)
+        
+        return jsonify({"status": "success", "inserted": len(rows_to_insert)}), 200
+    except Exception as e: 
+        app.logger.error(traceback.format_exc())
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 @app.route('/clear_chat', methods=['DELETE'])
 def clear_chat():
     try:
@@ -242,4 +279,4 @@ def update_timetable():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
-# end of version v5.7.0
+# end of version v5.8.0
