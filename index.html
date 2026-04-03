@@ -40,23 +40,23 @@
 <body class="font-sans">
 
     <header class="fixed top-0 left-0 right-0 z-50 glass-panel">
-        <div class="max-w-7xl mx-auto px-6 py-5 flex justify-between items-center">
-            <div class="flex flex-col">
+        <div class="max-w-7xl mx-auto px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-3 md:gap-0">
+            <div class="flex flex-col items-center md:items-start">
                 <h1 class="font-display text-xl font-900 tracking-tighter text-white uppercase italic">ROUTINE<span class="text-white/70 not-italic">FLOW</span></h1>
                 <div class="flex items-center space-x-2">
                     <span id="header-live-clock" class="clock-font text-[10px] text-white/40 tracking-widest uppercase">00:00:00 AM</span>
                     <span id="sync-indicator" class="text-[8px] tracking-widest uppercase text-white/20"></span>
                 </div>
             </div>
-            <nav class="flex space-x-6 font-black text-[10px] tracking-[0.3em]">
-                <button id="nav-dashboard" onclick="switchTab('dashboard')" class="pb-1 tab-active uppercase">DASHBOARD</button>
-                <button id="nav-insights" onclick="switchTab('insights')" class="pb-1 tab-inactive uppercase">ARCHITECT</button>
-                <button id="nav-analytics" onclick="switchTab('analytics')" class="pb-1 tab-inactive uppercase">ANALYTICS</button>
+            <nav class="flex space-x-4 md:space-x-6 font-black text-[10px] tracking-widest md:tracking-[0.3em]">
+                <button id="nav-dashboard" onclick="switchTab('dashboard')" class="pb-1 tab-active uppercase transition">DASHBOARD</button>
+                <button id="nav-insights" onclick="switchTab('insights')" class="pb-1 tab-inactive uppercase transition">ARCHITECT</button>
+                <button id="nav-analytics" onclick="switchTab('analytics')" class="pb-1 tab-inactive uppercase transition">ANALYTICS</button>
             </nav>
         </div>
     </header>
 
-    <main class="pt-24 max-w-7xl mx-auto min-h-screen">
+    <main class="pt-28 md:pt-24 max-w-7xl mx-auto min-h-screen">
         <section id="view-dashboard" class="p-6 flex flex-col items-center space-y-12">
             <div class="w-full grid grid-cols-1 md:grid-cols-3 gap-8 items-center text-center text-[12px] uppercase font-black">
                 <div id="prev-activity" class="text-white/70">---</div>
@@ -162,9 +162,8 @@
             syncWithCloud();
 
             if(localChatHistory.length === 0) {
-                appendBubble('ai', "System: Memory Loaded. Architect Engine V5.8.5 online.");
+                appendBubble('ai', "System: Memory Loaded. Architect Engine V5.8.6 online.");
             } else {
-                // V5.8.5: Reparse AI text on page load to perfectly rebuild action cards dynamically!
                 localChatHistory.forEach(m => {
                     if (m.type === 'ai') {
                         processAIResponse(m.text);
@@ -267,7 +266,6 @@
             } catch(e) {}
         }
 
-        // V5.8.5: Live Tab Tracking feature incorporated directly into the display updater
         function updateTimerDisplay() {
             const abs = Math.max(0, AppState.timerSeconds);
             const h = Math.floor(abs/3600).toString().padStart(2,'0');
@@ -275,10 +273,8 @@
             const s = (abs%60).toString().padStart(2,'0');
             const timeString = `${h}:${m}:${s}`;
             
-            // Update Dashboard Timer
             document.getElementById('main-timer').innerText = timeString;
 
-            // Update Live Tab Tracker
             if (AppState.timerState === 'RUNNING' && AppState.currentActivity) {
                 document.title = `⏳ [${timeString}] ${AppState.currentActivity.Activity}`;
             } else {

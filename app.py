@@ -1,4 +1,4 @@
-# start of version v5.8.5
+# start of version v5.8.6
 from dotenv import load_dotenv
 load_dotenv()
 from flask import Flask, request, jsonify
@@ -86,7 +86,7 @@ cloud_state = {
 def health():
     return jsonify({
         "service": "Routine Flow Architect", 
-        "version": "5.8.5", 
+        "version": "5.8.6", 
         "status": "Online",
         "model": "gemini-3-flash-preview"
     }), 200
@@ -283,4 +283,4 @@ def update_timetable():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
-# end of version v5.8.5
+# end of version v5.8.6
