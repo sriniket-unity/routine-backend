@@ -48,11 +48,12 @@ def sanitize_ts(ts_str):
         return f"{parts[0]} {h.zfill(2)}:{m.zfill(2)}"
     except: return ts_str
 
-# --- ☁️ CLOUD SYNC STATE ---
+# --- ☁️ CLOUD SYNC STATE (V5.6.1 UPDATED) ---
 cloud_state = {
     "state": "READY",
     "activity": None,
-    "start_time": None
+    "start_time": None,
+    "accumulated_seconds": 0  # Added to prevent time-jumping when paused
 }
 
 # --- 🌐 ENDPOINTS ---
@@ -61,7 +62,7 @@ cloud_state = {
 def health():
     return jsonify({
         "service": "Routine Flow Architect", 
-        "version": "5.6.0", 
+        "version": "5.6.1", 
         "status": "Online",
         "model": "gemini-3-flash-preview"
     }), 200
@@ -77,6 +78,8 @@ def set_state():
     cloud_state["state"] = data.get("state", "READY")
     cloud_state["activity"] = data.get("activity")
     cloud_state["start_time"] = data.get("start_time")
+    # Store accumulated time safely, default to 0
+    cloud_state["accumulated_seconds"] = data.get("accumulated_seconds", 0) or 0
     return jsonify({"status": "success"}), 200
 
 @app.route('/get_schedule', methods=['GET'])

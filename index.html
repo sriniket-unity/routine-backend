@@ -38,7 +38,7 @@
                 <h1 class="font-display text-xl font-900 tracking-tighter text-white uppercase italic">ROUTINE<span class="text-white/70 not-italic">FLOW</span></h1>
                 <div class="flex items-center space-x-2">
                     <span id="header-live-clock" class="clock-font text-[10px] text-white/40 tracking-widest uppercase">00:00:00 AM</span>
-                    <span id="sync-indicator" class="text-[8px] tracking-widest uppercase text-white/20">CLOUD SYNCED</span>
+                    <span id="sync-indicator" class="text-[8px] tracking-widest uppercase text-white/20"></span>
                 </div>
             </div>
             <nav class="flex space-x-6 font-black text-[10px] tracking-[0.3em]">
@@ -76,6 +76,7 @@
                 <div id="main-timer" class="clock-font text-7xl md:text-[10rem] font-bold text-white tracking-tighter leading-none">00:00:00</div>
                 <div class="flex space-x-4">
                     <button onclick="handleCheckIn()" class="bg-white text-black px-12 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest active:scale-95 transition-transform">Check-In</button>
+                    <button id="btn-pause" onclick="handlePauseResume()" class="border border-yellow-400/30 text-yellow-400 px-12 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-white/5 active:scale-95 transition-transform">Pause</button>
                     <button onclick="handleCheckOut(event)" class="border border-white/10 px-12 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-white/5 active:scale-95 transition-transform">Check-Out</button>
                 </div>
             </div>
@@ -149,7 +150,8 @@
 
     <script>
         const BackendAPI = "https://routine-backend-7yn2.onrender.com";
-        let AppState = { currentActivity: null, allActivities: [], timerSeconds: 0, totalSeconds: 0, timerState: 'READY', timerInterval: null };
+        // V5.6.1: Added accumulated_seconds state
+        let AppState = { currentActivity: null, allActivities: [], timerSeconds: 0, totalSeconds: 0, timerState: 'READY', timerInterval: null, accumulated_seconds: 0 };
         let localChatHistory = JSON.parse(localStorage.getItem('routine_chat_cache')) || [];
         let lastAppliedChange = null;
 
@@ -157,18 +159,17 @@
             fetchSchedule();
             setInterval(updateHeaderClock, 1000);
             
-            // Start Cloud Polling every 5 seconds
             setInterval(syncWithCloud, 5000);
-            syncWithCloud(); // Check immediately on load
+            syncWithCloud();
 
             if(localChatHistory.length === 0) {
-                appendBubble('ai', "System: Memory Loaded. Architect Engine V5.6 (Cloud Sync) online.");
+                appendBubble('ai', "System: Memory Loaded. Architect Engine V5.6.1 (Sync & Pause) online.");
             } else {
                 localChatHistory.forEach(m => appendBubble(m.type, m.text));
             }
         });
 
-        // --- CLOUD SYNC ENGINE V5.6 ---
+        // --- CLOUD SYNC ENGINE V5.6.1 ---
         async function syncWithCloud() {
             try {
                 const res = await fetch(`${BackendAPI}/get_state`);
@@ -178,28 +179,48 @@
                     const cloud = result.data;
                     const indicator = document.getElementById('sync-indicator');
                     
-                    if (cloud.state === 'RUNNING' && cloud.start_time) {
-                        indicator.innerText = "LIVE SYNC ON";
+                    // Task 1: Silent UI text, but keep the pulse classes
+                    indicator.innerText = ""; 
+                    if (cloud.state === 'RUNNING') {
                         indicator.className = "text-[8px] tracking-widest uppercase sync-active";
+                    } else if (cloud.state === 'PAUSED') {
+                        indicator.className = "text-[8px] tracking-widest uppercase text-yellow-400";
+                    } else {
+                        indicator.className = "text-[8px] tracking-widest uppercase text-white/20";
+                    }
 
-                        // If cloud is running but local is not, instantly start local timer
-                        const localStart = localStorage.getItem('routine_timer_start');
-                        if (!localStart || localStorage.getItem('routine_timer_activity') !== cloud.activity) {
+                    // Task 2: Multi-Device Sync Logic
+                    if (cloud.state === 'RUNNING' && cloud.start_time) {
+                        if (AppState.timerState !== 'RUNNING') {
                             localStorage.setItem('routine_timer_start', cloud.start_time);
                             localStorage.setItem('routine_timer_activity', cloud.activity);
+                            localStorage.setItem('routine_timer_accumulated', cloud.accumulated_seconds || 0);
+                            AppState.accumulated_seconds = cloud.accumulated_seconds || 0;
                             AppState.timerState = 'RUNNING';
+                            document.getElementById('btn-pause').innerText = "PAUSE";
                             startTimerLoop();
                         }
-                    } else if (cloud.state === 'READY' && AppState.timerState === 'RUNNING') {
-                         // If cloud says READY but local is RUNNING, someone checked out on another device.
+                    } else if (cloud.state === 'PAUSED') {
+                        if (AppState.timerState !== 'PAUSED') {
+                            clearInterval(AppState.timerInterval);
+                            AppState.timerState = 'PAUSED';
+                            AppState.accumulated_seconds = cloud.accumulated_seconds || 0;
+                            
+                            localStorage.setItem('routine_timer_accumulated', AppState.accumulated_seconds);
+                            localStorage.removeItem('routine_timer_start');
+                            document.getElementById('btn-pause').innerText = "RESUME";
+                            
+                            // Re-calculate visual timer based on the accumulated seconds
+                            AppState.timerSeconds = AppState.totalSeconds - AppState.accumulated_seconds;
+                            updateTimerDisplay();
+                        }
+                    } else if (cloud.state === 'READY' && AppState.timerState !== 'READY') {
                          clearInterval(AppState.timerInterval);
                          AppState.timerState = 'READY';
                          localStorage.removeItem('routine_timer_start');
                          localStorage.removeItem('routine_timer_activity');
-                         location.reload(); // Hard reload to fetch new schedule stats
-                    } else {
-                        indicator.innerText = "CLOUD STANDBY";
-                        indicator.className = "text-[8px] tracking-widest uppercase text-white/20";
+                         localStorage.removeItem('routine_timer_accumulated');
+                         location.reload(); 
                     }
                 }
             } catch(e) {
@@ -211,29 +232,74 @@
         async function handleCheckIn() { 
             if(AppState.timerState === 'READY') { 
                 AppState.timerState = 'RUNNING'; 
+                AppState.accumulated_seconds = 0;
                 const startTime = Date.now();
                 
-                // 1. Save locally for instant UI update
                 localStorage.setItem('routine_timer_start', startTime);
                 localStorage.setItem('routine_timer_activity', AppState.currentActivity.Activity);
+                localStorage.setItem('routine_timer_accumulated', 0);
                 startTimerLoop();
+                document.getElementById('btn-pause').innerText = "PAUSE";
                 
-                // 2. Broadcast to Cloud so other devices wake up
                 try {
                     await fetch(`${BackendAPI}/set_state`, {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({ state: 'RUNNING', activity: AppState.currentActivity.Activity, start_time: startTime })
+                        method: 'POST', headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ state: 'RUNNING', activity: AppState.currentActivity.Activity, start_time: startTime, accumulated_seconds: 0 })
                     });
-                    syncWithCloud(); // Force sync indicator update
-                } catch(e) { showToast("Failed to broadcast to cloud", "error"); }
+                    syncWithCloud();
+                } catch(e) { showToast("Failed to broadcast", "error"); }
             } 
         }
 
+        // V5.6.1: PAUSE / RESUME LOGIC
+        async function handlePauseResume() {
+            if (AppState.timerState === 'READY') return;
+
+            if (AppState.timerState === 'RUNNING') {
+                // Pause the timer
+                clearInterval(AppState.timerInterval);
+                AppState.timerState = 'PAUSED';
+                
+                const savedStart = parseInt(localStorage.getItem('routine_timer_start'));
+                if (savedStart) {
+                    const elapsed = Math.floor((Date.now() - savedStart) / 1000);
+                    AppState.accumulated_seconds += elapsed;
+                }
+                
+                localStorage.setItem('routine_timer_accumulated', AppState.accumulated_seconds);
+                localStorage.removeItem('routine_timer_start');
+                document.getElementById('btn-pause').innerText = "RESUME";
+
+                try {
+                    await fetch(`${BackendAPI}/set_state`, {
+                        method: 'POST', headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ state: 'PAUSED', activity: AppState.currentActivity.Activity, start_time: null, accumulated_seconds: AppState.accumulated_seconds })
+                    });
+                } catch(e) { showToast("Sync Error", "error"); }
+
+            } else if (AppState.timerState === 'PAUSED') {
+                // Resume the timer
+                AppState.timerState = 'RUNNING';
+                const startTime = Date.now();
+                
+                localStorage.setItem('routine_timer_start', startTime);
+                document.getElementById('btn-pause').innerText = "PAUSE";
+                startTimerLoop();
+
+                try {
+                    await fetch(`${BackendAPI}/set_state`, {
+                        method: 'POST', headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ state: 'RUNNING', activity: AppState.currentActivity.Activity, start_time: startTime, accumulated_seconds: AppState.accumulated_seconds })
+                    });
+                } catch(e) { showToast("Sync Error", "error"); }
+            }
+        }
+
         async function handleCheckOut(event) { 
-            if (AppState.timerState !== 'RUNNING') return;
+            if (AppState.timerState === 'READY') return;
             clearInterval(AppState.timerInterval); 
             
+            // Calculate total time worked (combining actual time vs accumulated time)
             const workedSeconds = AppState.totalSeconds - AppState.timerSeconds;
             const actualDurationHrs = workedSeconds / 3600;
             const plannedDurationHrs = parseFloat(AppState.currentActivity.Duration);
@@ -241,20 +307,19 @@
 
             localStorage.removeItem('routine_timer_start');
             localStorage.removeItem('routine_timer_activity');
+            localStorage.removeItem('routine_timer_accumulated');
 
             event.target.innerText = "Saving...";
 
             try {
-                // 1. Log to Database
                 await fetch(`${BackendAPI}/log_session`, { 
                     method: 'POST', headers: {'Content-Type': 'application/json'}, 
                     body: JSON.stringify({ activity: AppState.currentActivity.Activity, planned_duration: plannedDurationHrs, actual_duration: actualDurationHrs, time_debt: timeDebt }) 
                 }); 
                 
-                // 2. Broadcast Stop command to Cloud
                 await fetch(`${BackendAPI}/set_state`, {
                     method: 'POST', headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ state: 'READY', activity: null, start_time: null })
+                    body: JSON.stringify({ state: 'READY', activity: null, start_time: null, accumulated_seconds: 0 })
                 });
 
                 location.reload(); 
@@ -309,12 +374,23 @@
             
             updateTimerDisplay();
 
-            // Resume Timer if page was reloaded (Fallback to local if cloud slow)
+            // V5.6.1: Reload Local State (Handles Refresh while paused or running)
             const savedStart = localStorage.getItem('routine_timer_start');
             const savedActivity = localStorage.getItem('routine_timer_activity');
-            if (savedStart && savedActivity === cur.Activity) {
-                AppState.timerState = 'RUNNING';
-                startTimerLoop();
+            const savedAcc = localStorage.getItem('routine_timer_accumulated');
+
+            if (savedActivity === cur.Activity) {
+                AppState.accumulated_seconds = parseInt(savedAcc) || 0;
+                if (savedStart) {
+                    AppState.timerState = 'RUNNING';
+                    document.getElementById('btn-pause').innerText = "PAUSE";
+                    startTimerLoop();
+                } else if (AppState.accumulated_seconds > 0) {
+                    AppState.timerState = 'PAUSED';
+                    document.getElementById('btn-pause').innerText = "RESUME";
+                    AppState.timerSeconds = AppState.totalSeconds - AppState.accumulated_seconds;
+                    updateTimerDisplay();
+                }
             }
         }
 
@@ -329,9 +405,12 @@
             if(AppState.timerInterval) clearInterval(AppState.timerInterval);
             AppState.timerInterval = setInterval(() => { 
                 const savedStart = parseInt(localStorage.getItem('routine_timer_start'));
+                const acc = parseInt(localStorage.getItem('routine_timer_accumulated')) || 0;
+                
                 if (savedStart) {
                     const elapsedSeconds = Math.floor((Date.now() - savedStart) / 1000);
-                    AppState.timerSeconds = AppState.totalSeconds - elapsedSeconds;
+                    // Subtract both elapsed real-time AND previously paused accumulated time
+                    AppState.timerSeconds = AppState.totalSeconds - (elapsedSeconds + acc);
                     if (AppState.timerSeconds < 0) AppState.timerSeconds = 0; 
                 }
                 updateTimerDisplay(); 
