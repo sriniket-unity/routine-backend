@@ -70,7 +70,7 @@
                 <div id="main-timer" class="clock-font text-7xl md:text-[10rem] font-bold text-white tracking-tighter leading-none">00:00:00</div>
                 <div class="flex space-x-4">
                     <button onclick="handleCheckIn()" class="bg-white text-black px-12 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest active:scale-95 transition-transform">Check-In</button>
-                    <button onclick="handleCheckOut()" class="border border-white/10 px-12 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-white/5 active:scale-95 transition-transform">Check-Out</button>
+                    <button onclick="handleCheckOut(event)" class="border border-white/10 px-12 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-white/5 active:scale-95 transition-transform">Check-Out</button>
                 </div>
             </div>
         </section>
@@ -92,7 +92,7 @@
                     </div>
                 <div class="absolute bottom-6 left-0 right-0 px-6">
                     <div class="max-w-3xl mx-auto relative">
-                        <input id="chat-input" type="text" placeholder="Consult Architect..." class="w-full bg-white/5 border border-white/10 rounded-2xl py-5 px-6 text-sm focus:outline-none focus:border-white/20 transition-all">
+                        <input id="chat-input" type="text" placeholder="Consult Architect..." onkeypress="if(event.key === 'Enter') sendMessage()" class="w-full bg-white/5 border border-white/10 rounded-2xl py-5 px-6 text-sm focus:outline-none focus:border-white/20 transition-all">
                         <button onclick="sendMessage()" class="absolute right-4 top-1/2 -translate-y-1/2 bg-white text-black p-2 rounded-xl"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"/></svg></button>
                     </div>
                 </div>
@@ -146,7 +146,7 @@
 
     <script>
         const BackendAPI = "https://routine-backend-7yn2.onrender.com";
-        let AppState = { currentActivity: null, allActivities: [], timerSeconds: 0, totalSeconds: 0, timerState: 'READY' };
+        let AppState = { currentActivity: null, allActivities: [], timerSeconds: 0, totalSeconds: 0, timerState: 'READY', timerInterval: null };
         let localChatHistory = JSON.parse(localStorage.getItem('routine_chat_cache')) || [];
         let lastAppliedChange = null;
 
@@ -154,7 +154,7 @@
             fetchSchedule();
             setInterval(updateHeaderClock, 1000);
             if(localChatHistory.length === 0) {
-                appendBubble('ai', "System: Memory Loaded. Architect Engine V5.4 online. How are you feeling today, Sriniket?");
+                appendBubble('ai', "System: Memory Loaded. Architect Engine V5.5.5 online. How are you feeling today, Sriniket?");
             } else {
                 localChatHistory.forEach(m => appendBubble(m.type, m.text));
             }
@@ -193,16 +193,28 @@
             });
             if(idx === -1) idx = 0;
             const cur = AppState.allActivities[idx], prev = AppState.allActivities[idx-1] || AppState.allActivities[AppState.allActivities.length-1], next = AppState.allActivities[idx+1] || AppState.allActivities[0];
+            
             document.getElementById('current-activity').innerText = cur.Activity;
             document.getElementById('prev-activity').innerText = prev.Activity;
             document.getElementById('prev-time').innerText = prev.Time;
             document.getElementById('next-activity').innerText = next.Activity;
             document.getElementById('next-time').innerText = next.Time;
+            
             AppState.currentActivity = cur;
             AppState.totalSeconds = Math.round((parseFloat(cur.Duration) || 1) * 3600);
             AppState.timerSeconds = AppState.totalSeconds;
             document.getElementById('activity-total').innerText = `${parseFloat(cur.Duration).toFixed(2)}h`;
+            
             updateTimerDisplay();
+
+            // --- V5.5.5: RESUME TIMER IF PAGE WAS RELOADED ---
+            const savedStart = localStorage.getItem('routine_timer_start');
+            const savedActivity = localStorage.getItem('routine_timer_activity');
+            
+            if (savedStart && savedActivity === cur.Activity) {
+                AppState.timerState = 'RUNNING';
+                startTimerLoop();
+            }
         }
 
         function updateTimerDisplay() {
@@ -212,17 +224,84 @@
             document.getElementById('activity-progress').innerText = `${Math.max(0, (AppState.totalSeconds - AppState.timerSeconds)/3600).toFixed(2)}h`;
         }
 
-        function handleCheckIn() { if(AppState.timerState === 'READY') { AppState.timerState = 'RUNNING'; AppState.timerInterval = setInterval(() => { AppState.timerSeconds--; updateTimerDisplay(); }, 1000); } }
-        async function handleCheckOut() { clearInterval(AppState.timerInterval); await fetch(`${BackendAPI}/log_session`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ activity: AppState.currentActivity.Activity, planned_duration: parseFloat(AppState.currentActivity.Duration), actual_duration: (AppState.totalSeconds - AppState.timerSeconds)/3600, time_debt: Math.max(0, parseFloat(AppState.currentActivity.Duration) - (AppState.totalSeconds - AppState.timerSeconds)/3600) }) }); location.reload(); }
+        // --- BULLETPROOF TIMER LOGIC ---
+        function handleCheckIn() { 
+            if(AppState.timerState === 'READY') { 
+                AppState.timerState = 'RUNNING'; 
+                
+                // Save the exact start time to local storage
+                localStorage.setItem('routine_timer_start', Date.now());
+                localStorage.setItem('routine_timer_activity', AppState.currentActivity.Activity);
+                
+                startTimerLoop();
+            } 
+        }
 
+        function startTimerLoop() {
+            if(AppState.timerInterval) clearInterval(AppState.timerInterval);
+            
+            AppState.timerInterval = setInterval(() => { 
+                const savedStart = parseInt(localStorage.getItem('routine_timer_start'));
+                if (savedStart) {
+                    const elapsedSeconds = Math.floor((Date.now() - savedStart) / 1000);
+                    AppState.timerSeconds = AppState.totalSeconds - elapsedSeconds;
+                    
+                    if (AppState.timerSeconds < 0) AppState.timerSeconds = 0; 
+                }
+                updateTimerDisplay(); 
+            }, 1000);
+        }
+
+        async function handleCheckOut(event) { 
+            if (AppState.timerState !== 'RUNNING') return;
+            clearInterval(AppState.timerInterval); 
+            
+            // Calculate exact duration
+            const workedSeconds = AppState.totalSeconds - AppState.timerSeconds;
+            const actualDurationHrs = workedSeconds / 3600;
+            const plannedDurationHrs = parseFloat(AppState.currentActivity.Duration);
+            const timeDebt = Math.max(0, plannedDurationHrs - actualDurationHrs);
+
+            // Clear saved timer
+            localStorage.removeItem('routine_timer_start');
+            localStorage.removeItem('routine_timer_activity');
+
+            event.target.innerText = "Saving...";
+
+            try {
+                await fetch(`${BackendAPI}/log_session`, { 
+                    method: 'POST', 
+                    headers: {'Content-Type': 'application/json'}, 
+                    body: JSON.stringify({ 
+                        activity: AppState.currentActivity.Activity, 
+                        planned_duration: plannedDurationHrs, 
+                        actual_duration: actualDurationHrs, 
+                        time_debt: timeDebt 
+                    }) 
+                }); 
+                location.reload(); 
+            } catch (e) {
+                showToast("Failed to save session", "error");
+                event.target.innerText = "Check-Out";
+            }
+        }
+
+        // --- AI ARCHITECT LOGIC ---
         async function sendMessage(overrideText = null) {
             const input = document.getElementById('chat-input');
-            const msg = overrideText || input.value;
+            const msg = overrideText || input.value.trim();
             if(!msg) return;
+            
             appendBubble('user', msg);
             if(!overrideText) input.value = '';
+            
+            const loadingId = "loading-" + Date.now();
+            appendBubble('ai', "Thinking...", loadingId);
+
             try {
                 const res = await fetch(`${BackendAPI}/chat`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ message: msg }) });
+                document.getElementById(loadingId)?.remove();
+                
                 const result = await res.json();
                 if(result.status === "success") {
                     const aiText = result.text;
@@ -230,18 +309,24 @@
                     localStorage.setItem('routine_chat_cache', JSON.stringify(localChatHistory.slice(-20)));
                     processAIResponse(aiText);
                 }
-            } catch(e) { showToast("Chat Offline", "error"); }
+            } catch(e) { 
+                document.getElementById(loadingId)?.remove();
+                showToast("Chat Offline", "error"); 
+            }
         }
 
-        function appendBubble(type, text) {
+        function appendBubble(type, text, id = null) {
             const win = document.getElementById('chat-window'), div = document.createElement('div');
-            div.className = type === 'ai' ? 'chat-bubble-ai p-5 max-w-[85%] text-sm leading-relaxed self-start animate-in fade-in slide-in-from-left-2' : 'chat-bubble-user p-5 max-w-[85%] text-sm leading-relaxed self-end ml-auto animate-in fade-in slide-in-from-right-2';
-            div.innerText = text;
+            if(id) div.id = id;
+            div.className = type === 'ai' 
+                ? 'chat-bubble-ai p-5 max-w-[85%] text-sm leading-relaxed self-start animate-in fade-in slide-in-from-left-2' 
+                : 'chat-bubble-user p-5 max-w-[85%] text-sm leading-relaxed self-end ml-auto animate-in fade-in slide-in-from-right-2';
+            
+            div.innerHTML = text.replace(/\n/g, '<br>');
             win.appendChild(div);
             win.scrollTop = win.scrollHeight;
         }
 
-        // 🗑️ V5.4: CLEAR CHAT LOGIC
         async function clearChatHistory() {
             if(!confirm("Wipe all chat memory? This cannot be undone.")) return;
             showToast("Wiping Memory...", "info");
@@ -259,10 +344,16 @@
 
         function processAIResponse(rawText) {
             let cleanText = rawText, actionData = null;
-            if(rawText.includes('ACTION_RECS:')) {
-                const parts = rawText.split('ACTION_RECS:');
-                cleanText = parts[0].trim();
-                try { actionData = JSON.parse(parts[1].trim()); } catch(e) {}
+            
+            const actionMatch = rawText.match(/ACTION_RECS:\s*({[\s\S]*?})/);
+            
+            if(actionMatch) {
+                try { 
+                    actionData = JSON.parse(actionMatch[1]); 
+                    cleanText = rawText.replace(actionMatch[0], '').trim();
+                } catch(e) {
+                    console.error("Failed to parse AI JSON block", e);
+                }
             }
             appendBubble('ai', cleanText);
             if(actionData) renderActionCard(actionData);
@@ -270,31 +361,43 @@
 
         function renderActionCard(data) {
             const win = document.getElementById('chat-window'), div = document.createElement('div');
-            div.className = "stat-card border-white/20 p-6 space-y-4 max-w-[85%] animate-in zoom-in-95";
-            div.innerHTML = `<span class="text-[9px] font-black text-white/30 uppercase tracking-widest">Architect Suggestion</span><h5 class="text-sm font-bold text-white">${data.action_target} ➔ ${data.new_val}</h5><p class="text-[11px] text-white/50 italic">"${data.reason}"</p><div class="flex space-x-2"><button id="btn-apply" onclick="executeAdjustment(event, '${data.action_target}', '${data.new_val}')" class="flex-1 bg-white text-black py-3 rounded-xl font-black text-[10px] uppercase">Confirm</button><button onclick="this.parentElement.parentElement.remove()" class="px-5 py-3 border border-white/10 rounded-xl text-[10px] font-black uppercase text-white">Ignore</button></div>`;
+            div.className = "stat-card border-white/20 p-6 space-y-4 max-w-[85%] animate-in zoom-in-95 self-start ml-4 mt-2";
+            div.innerHTML = `<span class="text-[9px] font-black text-white/30 uppercase tracking-widest">Architect Suggestion</span><h5 class="text-sm font-bold text-white">${data.action_target} ➔ ${data.new_val}</h5><p class="text-[11px] text-white/50 italic">"${data.reason}"</p><div class="flex space-x-2"><button id="btn-apply" onclick="executeAdjustment(event, '${data.action_target}', '${data.new_val}')" class="flex-1 bg-white text-black py-3 rounded-xl font-black text-[10px] uppercase transition hover:bg-gray-200">Confirm</button><button onclick="this.parentElement.parentElement.remove()" class="px-5 py-3 border border-white/10 rounded-xl text-[10px] font-black uppercase text-white hover:bg-white/5 transition">Ignore</button></div>`;
             win.appendChild(div);
             win.scrollTop = win.scrollHeight;
         }
 
         async function executeAdjustment(e, activity, newVal) {
+            const btn = e.target;
+            btn.innerText = "Applying...";
+            btn.disabled = true;
+
             const original = AppState.allActivities.find(a => a.Activity.toLowerCase() === activity.toLowerCase());
             const oldVal = original ? original.Duration : "1.0h";
+            
             const res = await fetch(`${BackendAPI}/update_timetable`, { method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ activity, new_val: newVal }) });
             if(res.ok) {
                 lastAppliedChange = { activity, oldVal };
                 showToast("Schedule Adjusted", "success");
-                e.target.parentElement.innerHTML = `<button onclick="revertLastChange(event)" class="flex-1 border border-debt text-debt py-3 rounded-xl font-black text-[10px] uppercase">Revert Change</button>`;
+                btn.parentElement.innerHTML = `<button onclick="revertLastChange(event)" class="flex-1 border border-debt text-debt hover:bg-debt/10 py-3 rounded-xl font-black text-[10px] uppercase transition">Revert Change</button>`;
+            } else {
+                btn.innerText = "Failed";
+                btn.classList.add("bg-debt", "text-white");
             }
         }
 
         async function revertLastChange(e) {
             if(!lastAppliedChange) return;
+            const btn = e.target;
+            btn.innerText = "Reverting...";
+            
             const { activity, oldVal } = lastAppliedChange;
             const res = await fetch(`${BackendAPI}/update_timetable`, { method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ activity, new_val: oldVal }) });
+            
             if(res.ok) {
                 lastAppliedChange = null;
-                e.target.parentElement.parentElement.remove();
-                sendMessage(`System: Reverted ${activity} to ${oldVal}. Acknowledge.`);
+                btn.parentElement.parentElement.remove();
+                sendMessage(`System: Reverted ${activity} to ${oldVal}.`);
                 showToast("Restored", "info");
             }
         }
