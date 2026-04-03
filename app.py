@@ -32,14 +32,18 @@ def init_sheets():
             timetable_ws = sheet.worksheet("Timetable")
             logs_ws = sheet.worksheet("Logs")
             return True
-    except: return False
+        else:
+            print("CRITICAL: GOOGLE_SHEETS_CREDS_JSON is missing.")
+            return False
+    except Exception as e: 
+        print(f"CRITICAL: Failed to connect to Sheets: {e}")
+        return False
 
 init_sheets()
 
 # --- 🛠️ ULTRA-ROBUST TIME PARSER ---
 def parse_time_to_minutes(t_str):
     try:
-        # Clean string: " 08 : 30 AM " -> "08:30AM"
         clean = re.sub(r'\s+', '', t_str.strip().upper())
         match = re.match(r"(\d+):(\d+)(AM|PM)?", clean)
         if not match: return 0
@@ -60,7 +64,14 @@ def health():
 @app.route('/get_dashboard', methods=['GET'])
 def get_dashboard():
     try:
-        if not timetable_ws: init_sheets()
+        global timetable_ws
+        if not timetable_ws: 
+            init_sheets()
+            
+        # Error handling if sheets fail to load
+        if not timetable_ws:
+            return jsonify({"status": "error", "message": "Database not connected. Check Render Logs."}), 500
+
         all_tt = timetable_ws.get_all_values()
         headers = [h.strip() for h in all_tt[1] if h.strip()] 
         timetable_data = [dict(zip(headers, r)) for r in all_tt[2:] if any(r)]
@@ -86,7 +97,9 @@ def get_dashboard():
             "cur": cur_session,
             "next": timetable_data[idx+1] if idx < len(timetable_data)-1 else timetable_data[0]
         })
-    except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
+    except Exception as e: 
+        print("DASHBOARD ERROR:", str(e))
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/get_state', methods=['GET'])
 def get_state(): return jsonify({"status": "success", "data": cloud_state})

@@ -37,7 +37,7 @@
         <section id="view-dashboard" class="p-6 flex flex-col items-center space-y-12">
             <div class="w-full grid grid-cols-1 md:grid-cols-3 gap-8 items-center text-center text-[12px] uppercase font-black">
                 <div id="prev-activity" class="text-white/70">---</div>
-                <div id="current-activity" class="text-white border border-white/10 px-4 py-1 rounded-full">LOADING...</div>
+                <div id="current-activity" class="text-white border border-white/10 px-4 py-1 rounded-full text-center">LOADING...</div>
                 <div id="next-activity" class="text-white/70">---</div>
             </div>
             <div id="main-timer" class="clock-font text-[18vw] md:text-[10rem] font-bold text-white tracking-tighter leading-none py-10">00:00:00</div>
@@ -70,9 +70,8 @@
         document.addEventListener('DOMContentLoaded', () => {
             fetchData();
             setInterval(() => {
-                document.getElementById('sync-indicator')?.innerText = ""; // Silent sync
+                document.getElementById('sync-indicator')?.innerText = ""; 
             }, 5000);
-            // Restore Architect Greeting
             appendBubble('ai', "Memory initialized. Architect Engine V5.6.6 online. How can I help you today, Sriniket?");
         });
 
@@ -80,6 +79,7 @@
             try {
                 const res = await fetch(`${API}/get_dashboard`);
                 const d = await res.json();
+                
                 if (d.status === "success") {
                     App.activity = d.cur;
                     document.getElementById('current-activity').innerText = d.cur.Activity;
@@ -88,8 +88,18 @@
                     App.total = Math.round((parseFloat(d.cur.Duration) || 1) * 3600);
                     App.seconds = App.total;
                     updateUI();
+                } else {
+                    console.error("Backend Error:", d.message);
+                    document.getElementById('current-activity').innerText = "DB ERROR";
+                    document.getElementById('prev-activity').innerText = "CHECK";
+                    document.getElementById('next-activity').innerText = "RENDER LOGS";
                 }
-            } catch(e) { document.getElementById('current-activity').innerText = "SYNC ERROR"; }
+            } catch(e) { 
+                console.error("Fetch Error:", e);
+                document.getElementById('current-activity').innerText = "SERVER DOWN"; 
+                document.getElementById('prev-activity').innerText = "WAKING";
+                document.getElementById('next-activity').innerText = "UP...";
+            }
         }
 
         function updateUI() {
@@ -101,8 +111,17 @@
         async function sendMessage() {
             const i = document.getElementById('chat-input'), m = i.value; if(!m) return;
             appendBubble('user', m); i.value = '';
-            const res = await fetch(`${API}/chat`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ message: m }) });
-            const r = await res.json(); appendBubble('ai', r.text);
+            try {
+                const res = await fetch(`${API}/chat`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ message: m }) });
+                const r = await res.json(); 
+                if(r.status === "success") {
+                    appendBubble('ai', r.text);
+                } else {
+                    appendBubble('ai', "[System Error: Architect Offline]");
+                }
+            } catch(e) {
+                appendBubble('ai', "[Network Error: Cannot reach server]");
+            }
         }
 
         function appendBubble(role, text) {
@@ -117,7 +136,6 @@
             document.getElementById(`nav-${t}`).classList.replace('tab-inactive', 'tab-active');
         }
 
-        // Timer actions (simplified for stability)
         async function handleCheckIn() { App.seconds = App.total; updateUI(); }
         async function handlePauseResume() {}
         async function handleCheckOut() { location.reload(); }
