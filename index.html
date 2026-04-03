@@ -150,6 +150,7 @@
     <div id="toast-container"></div>
 
     <script>
+        // start of version v5.8.2
         const BackendAPI = "https://routine-backend-7yn2.onrender.com";
         let AppState = { currentActivity: null, allActivities: [], timerSeconds: 0, totalSeconds: 0, timerState: 'READY', timerInterval: null, accumulated_seconds: 0 };
         let localChatHistory = JSON.parse(localStorage.getItem('routine_chat_cache')) || [];
@@ -162,7 +163,7 @@
             syncWithCloud();
 
             if(localChatHistory.length === 0) {
-                appendBubble('ai', "System: Memory Loaded. Architect Engine V5.7.0 online.");
+                appendBubble('ai', "System: Memory Loaded. Architect Engine V5.8.2 online.");
             } else {
                 localChatHistory.forEach(m => appendBubble(m.type, m.text));
             }
@@ -338,7 +339,6 @@
             } catch(e) { event.target.innerText = "Check-Out"; }
         }
 
-        // --- Architect Chat Logic with Thinking Animation ---
         async function sendMessage(overrideText = null) {
             const input = document.getElementById('chat-input');
             const msg = overrideText || input.value.trim();
@@ -371,7 +371,7 @@
             div.className = type === 'ai' ? 'chat-bubble-ai p-5 max-w-[85%] text-sm leading-relaxed self-start animate-in fade-in slide-in-from-left-2 shadow-xl' : 'chat-bubble-user p-5 max-w-[85%] text-sm leading-relaxed self-end ml-auto animate-in fade-in slide-in-from-right-2 shadow-xl';
             
             if (text.includes('typing-dot')) {
-                div.innerHTML = text; // Inject HTML for thinking animation
+                div.innerHTML = text; 
             } else {
                 div.innerHTML = text.replace(/\n/g, '<br>');
             }
@@ -460,11 +460,9 @@
             if(!data) return;
             
             document.getElementById('stat-study-hrs').innerText = data.study;
-            document.getElementById('stat-adherence').innerText = data.adherence + "%";
             document.getElementById('stat-debt').innerText = data.debt;
             document.getElementById('study-progress-bar').style.width = Math.min(100, (data.study / 10) * 100) + "%";
             
-            // Fixed SVG Adherence calculation
             const offset = 377 - (377 * data.adherence) / 100;
             document.getElementById('adherence-circle').style.strokeDashoffset = offset;
             document.getElementById('circle-pct').innerText = data.adherence + "%";
@@ -497,6 +495,7 @@
             container.appendChild(toast);
             setTimeout(() => toast.remove(), 4000);
         }
+        // end of version v5.8.2
     </script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-# start of version v5.8.0
+# start of version v5.8.2
 from dotenv import load_dotenv
 load_dotenv()
 from flask import Flask, request, jsonify
@@ -85,7 +85,7 @@ cloud_state = {
 def health():
     return jsonify({
         "service": "Routine Flow Architect", 
-        "version": "5.8.0", 
+        "version": "5.8.2", 
         "status": "Online",
         "model": "gemini-3-flash-preview"
     }), 200
@@ -154,22 +154,46 @@ def get_analytics():
 
         def process_subset(subset):
             if not subset: return {"study": 0, "adherence": 0, "debt": 0, "chart": [0.0]*7}
-            total_study = sum(safe_float(r.get('Actual (hrs)')) for r in subset)
-            total_debt = sum(safe_float(r.get('Time Debt')) for r in subset)
-            completed = sum(1 for r in subset if safe_float(r.get('Actual (hrs)')) > 0)
-            adherence = round((completed / len(subset)) * 100)
+            
+            # 1. Flexible Key Matching
+            keys = list(subset[0].keys()) if subset else []
+            act_k = next((k for k in keys if 'actual' in k.lower()), None)
+            debt_k = next((k for k in keys if 'debt' in k.lower()), None)
+            ts_k = next((k for k in keys if 'time' in k.lower() or 'stamp' in k.lower()), None)
+
+            # 2. Filter out "Ghost Rows"
+            valid_rows = [r for r in subset if str(r.get(act_k, '')).strip() or str(r.get(debt_k, '')).strip()]
+            if not valid_rows: return {"study": 0, "adherence": 0, "debt": 0, "chart": [0.0]*7}
+
+            total_study = sum(safe_float(r.get(act_k)) for r in valid_rows)
+            total_debt = sum(safe_float(r.get(debt_k)) for r in valid_rows)
+            
+            # 3. Accurate Adherence Math
+            completed = sum(1 for r in valid_rows if safe_float(r.get(act_k)) > 0)
+            adherence = round((completed / len(valid_rows)) * 100)
+            
             chart = [0.0] * 7
-            for r in subset:
+            for r in valid_rows:
                 try:
-                    dt = datetime.strptime(sanitize_ts(r.get('Timestamp', '')), '%Y-%m-%d %H:%M')
-                    chart[dt.weekday()] += safe_float(r.get('Actual (hrs)'))
+                    dt = datetime.strptime(sanitize_ts(r.get(ts_k, '')), '%Y-%m-%d %H:%M')
+                    chart[dt.weekday()] += safe_float(r.get(act_k))
                 except: continue
+                
             return {"study": round(total_study, 1), "adherence": adherence, "debt": round(total_debt, 1), "chart": chart}
+
+        # Filter logs for 'This Week' safely
+        week_logs = []
+        ts_key = next((k for k in all_logs[0].keys() if 'time' in k.lower() or 'stamp' in k.lower()), None)
+        for r in all_logs:
+            try:
+                if IST.localize(datetime.strptime(sanitize_ts(r.get(ts_key, '')), '%Y-%m-%d %H:%M')) >= start_of_week:
+                    week_logs.append(r)
+            except: continue
 
         return jsonify({
             "status": "success", 
             "overall": process_subset(all_logs), 
-            "week": process_subset([r for r in all_logs if IST.localize(datetime.strptime(sanitize_ts(r.get('Timestamp', '')), '%Y-%m-%d %H:%M')) >= start_of_week])
+            "week": process_subset(week_logs)
         }), 200
     except Exception as e: 
         app.logger.error(traceback.format_exc())
@@ -279,4 +303,4 @@ def update_timetable():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
-# end of version v5.8.0
+# end of version v5.8.2
