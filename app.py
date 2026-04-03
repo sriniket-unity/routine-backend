@@ -34,7 +34,7 @@ def init_sheets():
             timetable_ws = sheet.worksheet("Timetable")
             logs_ws = sheet.worksheet("Logs")
             chat_logs_ws = sheet.worksheet("ChatLogs")
-            app.logger.info("✅ Sheets Status: Gemini 3 Systems Synchronized.")
+            app.logger.info("✅ Sheets Status: Gemini Systems Synchronized.")
     except Exception as e:
         app.logger.error(f"❌ Sheets Error: {e}")
 
@@ -48,23 +48,43 @@ def sanitize_ts(ts_str):
         return f"{parts[0]} {h.zfill(2)}:{m.zfill(2)}"
     except: return ts_str
 
+# --- ☁️ CLOUD SYNC STATE ---
+cloud_state = {
+    "state": "READY",
+    "activity": None,
+    "start_time": None
+}
+
 # --- 🌐 ENDPOINTS ---
 
 @app.route('/', methods=['GET'])
 def health():
     return jsonify({
         "service": "Routine Flow Architect", 
-        "version": "5.5.5", 
+        "version": "5.6.0", 
         "status": "Online",
         "model": "gemini-3-flash-preview"
     }), 200
+
+@app.route('/get_state', methods=['GET'])
+def get_state():
+    return jsonify({"status": "success", "data": cloud_state}), 200
+
+@app.route('/set_state', methods=['POST'])
+def set_state():
+    global cloud_state
+    data = request.json
+    cloud_state["state"] = data.get("state", "READY")
+    cloud_state["activity"] = data.get("activity")
+    cloud_state["start_time"] = data.get("start_time")
+    return jsonify({"status": "success"}), 200
 
 @app.route('/get_schedule', methods=['GET'])
 def get_schedule():
     try:
         if not timetable_ws: init_sheets()
         all_val = timetable_ws.get_all_values()
-        # Resilient Header Parsing (Ignores merged Row 1)
+        # Resilient Header Parsing
         headers = [h.strip() for h in all_val[1] if h.strip()] 
         data = [dict(zip(headers, r)) for r in all_val[2:] if any(r)]
         return jsonify({"status": "success", "data": data})
@@ -106,7 +126,7 @@ def chat():
         if not chat_logs_ws: init_sheets()
         user_msg = request.json.get('message')
 
-        # 1. Fetch Schedule Context (Ignoring Merged Title Row)
+        # 1. Fetch Schedule Context
         all_tt = timetable_ws.get_all_values()
         tt_headers = [h.strip() for h in all_tt[1] if h.strip()]
         timetable_data = [dict(zip(tt_headers, r)) for r in all_tt[2:] if any(r)]
@@ -132,7 +152,6 @@ def chat():
         ACTION_RECS: {{"action_target": "Activity Name", "new_val": "0.5h", "reason": "Rest and recovery"}}
         """
 
-        # 🚀 VALIDATED: Using the exact ID from your AI Studio Screenshot
         model = genai.GenerativeModel('gemini-3-flash-preview')
         response = model.generate_content(prompt)
         ai_text = response.text

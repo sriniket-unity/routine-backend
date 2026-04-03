@@ -25,6 +25,9 @@
         .chart-bar { transition: height 0.6s cubic-bezier(0.34, 1.56, 0.64, 1); }
         .clock-font { font-family: 'JetBrains Mono', monospace; letter-spacing: -0.05em; }
         ::-webkit-scrollbar { display: none; }
+        /* Sync Pulse Animation */
+        @keyframes pulse-sync { 0% { opacity: 0.2; } 50% { opacity: 1; } 100% { opacity: 0.2; } }
+        .sync-active { animation: pulse-sync 2s infinite; color: #4ade80; }
     </style>
 </head>
 <body class="font-sans">
@@ -33,7 +36,10 @@
         <div class="max-w-7xl mx-auto px-6 py-5 flex justify-between items-center">
             <div class="flex flex-col">
                 <h1 class="font-display text-xl font-900 tracking-tighter text-white uppercase italic">ROUTINE<span class="text-white/70 not-italic">FLOW</span></h1>
-                <span id="header-live-clock" class="clock-font text-[10px] text-white/40 tracking-widest uppercase">00:00:00 AM</span>
+                <div class="flex items-center space-x-2">
+                    <span id="header-live-clock" class="clock-font text-[10px] text-white/40 tracking-widest uppercase">00:00:00 AM</span>
+                    <span id="sync-indicator" class="text-[8px] tracking-widest uppercase text-white/20">CLOUD SYNCED</span>
+                </div>
             </div>
             <nav class="flex space-x-6 font-black text-[10px] tracking-[0.3em]">
                 <button id="nav-dashboard" onclick="switchTab('dashboard')" class="pb-1 tab-active uppercase">DASHBOARD</button>
@@ -83,13 +89,10 @@
                         <div class="p-3 bg-white/5 rounded-xl text-[9px] font-bold text-white/60 uppercase">Persistent Session</div>
                     </div>
                 </div>
-                <button onclick="clearChatHistory()" class="w-full py-3 border border-debt/30 text-debt/60 hover:text-debt hover:border-debt rounded-xl text-[9px] font-black uppercase tracking-widest transition-all">
-                    Clear History
-                </button>
+                <button onclick="clearChatHistory()" class="w-full py-3 border border-debt/30 text-debt/60 hover:text-debt hover:border-debt rounded-xl text-[9px] font-black uppercase tracking-widest transition-all">Clear History</button>
             </div>
             <div class="flex-1 flex flex-col relative bg-obsidian">
-                <div id="chat-window" class="chat-container overflow-y-auto p-6 space-y-6 pb-40">
-                    </div>
+                <div id="chat-window" class="chat-container overflow-y-auto p-6 space-y-6 pb-40"></div>
                 <div class="absolute bottom-6 left-0 right-0 px-6">
                     <div class="max-w-3xl mx-auto relative">
                         <input id="chat-input" type="text" placeholder="Consult Architect..." onkeypress="if(event.key === 'Enter') sendMessage()" class="w-full bg-white/5 border border-white/10 rounded-2xl py-5 px-6 text-sm focus:outline-none focus:border-white/20 transition-all">
@@ -100,7 +103,7 @@
         </section>
 
         <section id="view-analytics" class="hidden p-6 space-y-8 max-w-5xl mx-auto">
-            <div class="flex justify-between items-center">
+             <div class="flex justify-between items-center">
                 <h2 class="text-2xl font-black uppercase tracking-tight text-white">Performance <span class="text-white/20">Metrics</span></h2>
                 <div class="flex bg-white/5 p-1 rounded-xl">
                     <button onclick="toggleRange('week')" id="btn-week" class="px-4 py-2 text-[10px] font-black uppercase rounded-lg bg-white text-black transition-all">Week</button>
@@ -153,21 +156,120 @@
         document.addEventListener('DOMContentLoaded', () => {
             fetchSchedule();
             setInterval(updateHeaderClock, 1000);
+            
+            // Start Cloud Polling every 5 seconds
+            setInterval(syncWithCloud, 5000);
+            syncWithCloud(); // Check immediately on load
+
             if(localChatHistory.length === 0) {
-                appendBubble('ai', "System: Memory Loaded. Architect Engine V5.5.5 online. How are you feeling today, Sriniket?");
+                appendBubble('ai', "System: Memory Loaded. Architect Engine V5.6 (Cloud Sync) online.");
             } else {
                 localChatHistory.forEach(m => appendBubble(m.type, m.text));
             }
         });
 
+        // --- CLOUD SYNC ENGINE V5.6 ---
+        async function syncWithCloud() {
+            try {
+                const res = await fetch(`${BackendAPI}/get_state`);
+                const result = await res.json();
+                
+                if (result.status === "success") {
+                    const cloud = result.data;
+                    const indicator = document.getElementById('sync-indicator');
+                    
+                    if (cloud.state === 'RUNNING' && cloud.start_time) {
+                        indicator.innerText = "LIVE SYNC ON";
+                        indicator.className = "text-[8px] tracking-widest uppercase sync-active";
+
+                        // If cloud is running but local is not, instantly start local timer
+                        const localStart = localStorage.getItem('routine_timer_start');
+                        if (!localStart || localStorage.getItem('routine_timer_activity') !== cloud.activity) {
+                            localStorage.setItem('routine_timer_start', cloud.start_time);
+                            localStorage.setItem('routine_timer_activity', cloud.activity);
+                            AppState.timerState = 'RUNNING';
+                            startTimerLoop();
+                        }
+                    } else if (cloud.state === 'READY' && AppState.timerState === 'RUNNING') {
+                         // If cloud says READY but local is RUNNING, someone checked out on another device.
+                         clearInterval(AppState.timerInterval);
+                         AppState.timerState = 'READY';
+                         localStorage.removeItem('routine_timer_start');
+                         localStorage.removeItem('routine_timer_activity');
+                         location.reload(); // Hard reload to fetch new schedule stats
+                    } else {
+                        indicator.innerText = "CLOUD STANDBY";
+                        indicator.className = "text-[8px] tracking-widest uppercase text-white/20";
+                    }
+                }
+            } catch(e) {
+                document.getElementById('sync-indicator').innerText = "SYNC OFFLINE";
+                document.getElementById('sync-indicator').className = "text-[8px] tracking-widest uppercase text-debt";
+            }
+        }
+
+        async function handleCheckIn() { 
+            if(AppState.timerState === 'READY') { 
+                AppState.timerState = 'RUNNING'; 
+                const startTime = Date.now();
+                
+                // 1. Save locally for instant UI update
+                localStorage.setItem('routine_timer_start', startTime);
+                localStorage.setItem('routine_timer_activity', AppState.currentActivity.Activity);
+                startTimerLoop();
+                
+                // 2. Broadcast to Cloud so other devices wake up
+                try {
+                    await fetch(`${BackendAPI}/set_state`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ state: 'RUNNING', activity: AppState.currentActivity.Activity, start_time: startTime })
+                    });
+                    syncWithCloud(); // Force sync indicator update
+                } catch(e) { showToast("Failed to broadcast to cloud", "error"); }
+            } 
+        }
+
+        async function handleCheckOut(event) { 
+            if (AppState.timerState !== 'RUNNING') return;
+            clearInterval(AppState.timerInterval); 
+            
+            const workedSeconds = AppState.totalSeconds - AppState.timerSeconds;
+            const actualDurationHrs = workedSeconds / 3600;
+            const plannedDurationHrs = parseFloat(AppState.currentActivity.Duration);
+            const timeDebt = Math.max(0, plannedDurationHrs - actualDurationHrs);
+
+            localStorage.removeItem('routine_timer_start');
+            localStorage.removeItem('routine_timer_activity');
+
+            event.target.innerText = "Saving...";
+
+            try {
+                // 1. Log to Database
+                await fetch(`${BackendAPI}/log_session`, { 
+                    method: 'POST', headers: {'Content-Type': 'application/json'}, 
+                    body: JSON.stringify({ activity: AppState.currentActivity.Activity, planned_duration: plannedDurationHrs, actual_duration: actualDurationHrs, time_debt: timeDebt }) 
+                }); 
+                
+                // 2. Broadcast Stop command to Cloud
+                await fetch(`${BackendAPI}/set_state`, {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ state: 'READY', activity: null, start_time: null })
+                });
+
+                location.reload(); 
+            } catch (e) {
+                showToast("Failed to save session", "error");
+                event.target.innerText = "Check-Out";
+            }
+        }
+
+        // --- Core UI & Timer Math ---
         async function fetchSchedule() {
             try {
                 const res = await fetch(`${BackendAPI}/get_schedule`);
                 const result = await res.json();
-                if (result.status === "success") {
-                    AppState.allActivities = result.data;
-                    updateDashboardUI();
-                }
+                if (result.status === "success") { AppState.allActivities = result.data; updateDashboardUI(); }
             } catch(e) { console.error("Sync Error"); }
         }
 
@@ -207,10 +309,9 @@
             
             updateTimerDisplay();
 
-            // --- V5.5.5: RESUME TIMER IF PAGE WAS RELOADED ---
+            // Resume Timer if page was reloaded (Fallback to local if cloud slow)
             const savedStart = localStorage.getItem('routine_timer_start');
             const savedActivity = localStorage.getItem('routine_timer_activity');
-            
             if (savedStart && savedActivity === cur.Activity) {
                 AppState.timerState = 'RUNNING';
                 startTimerLoop();
@@ -224,69 +325,20 @@
             document.getElementById('activity-progress').innerText = `${Math.max(0, (AppState.totalSeconds - AppState.timerSeconds)/3600).toFixed(2)}h`;
         }
 
-        // --- BULLETPROOF TIMER LOGIC ---
-        function handleCheckIn() { 
-            if(AppState.timerState === 'READY') { 
-                AppState.timerState = 'RUNNING'; 
-                
-                // Save the exact start time to local storage
-                localStorage.setItem('routine_timer_start', Date.now());
-                localStorage.setItem('routine_timer_activity', AppState.currentActivity.Activity);
-                
-                startTimerLoop();
-            } 
-        }
-
         function startTimerLoop() {
             if(AppState.timerInterval) clearInterval(AppState.timerInterval);
-            
             AppState.timerInterval = setInterval(() => { 
                 const savedStart = parseInt(localStorage.getItem('routine_timer_start'));
                 if (savedStart) {
                     const elapsedSeconds = Math.floor((Date.now() - savedStart) / 1000);
                     AppState.timerSeconds = AppState.totalSeconds - elapsedSeconds;
-                    
                     if (AppState.timerSeconds < 0) AppState.timerSeconds = 0; 
                 }
                 updateTimerDisplay(); 
             }, 1000);
         }
 
-        async function handleCheckOut(event) { 
-            if (AppState.timerState !== 'RUNNING') return;
-            clearInterval(AppState.timerInterval); 
-            
-            // Calculate exact duration
-            const workedSeconds = AppState.totalSeconds - AppState.timerSeconds;
-            const actualDurationHrs = workedSeconds / 3600;
-            const plannedDurationHrs = parseFloat(AppState.currentActivity.Duration);
-            const timeDebt = Math.max(0, plannedDurationHrs - actualDurationHrs);
-
-            // Clear saved timer
-            localStorage.removeItem('routine_timer_start');
-            localStorage.removeItem('routine_timer_activity');
-
-            event.target.innerText = "Saving...";
-
-            try {
-                await fetch(`${BackendAPI}/log_session`, { 
-                    method: 'POST', 
-                    headers: {'Content-Type': 'application/json'}, 
-                    body: JSON.stringify({ 
-                        activity: AppState.currentActivity.Activity, 
-                        planned_duration: plannedDurationHrs, 
-                        actual_duration: actualDurationHrs, 
-                        time_debt: timeDebt 
-                    }) 
-                }); 
-                location.reload(); 
-            } catch (e) {
-                showToast("Failed to save session", "error");
-                event.target.innerText = "Check-Out";
-            }
-        }
-
-        // --- AI ARCHITECT LOGIC ---
+        // --- Architect Chat Logic ---
         async function sendMessage(overrideText = null) {
             const input = document.getElementById('chat-input');
             const msg = overrideText || input.value.trim();
@@ -309,19 +361,13 @@
                     localStorage.setItem('routine_chat_cache', JSON.stringify(localChatHistory.slice(-20)));
                     processAIResponse(aiText);
                 }
-            } catch(e) { 
-                document.getElementById(loadingId)?.remove();
-                showToast("Chat Offline", "error"); 
-            }
+            } catch(e) { document.getElementById(loadingId)?.remove(); showToast("Chat Offline", "error"); }
         }
 
         function appendBubble(type, text, id = null) {
             const win = document.getElementById('chat-window'), div = document.createElement('div');
             if(id) div.id = id;
-            div.className = type === 'ai' 
-                ? 'chat-bubble-ai p-5 max-w-[85%] text-sm leading-relaxed self-start animate-in fade-in slide-in-from-left-2' 
-                : 'chat-bubble-user p-5 max-w-[85%] text-sm leading-relaxed self-end ml-auto animate-in fade-in slide-in-from-right-2';
-            
+            div.className = type === 'ai' ? 'chat-bubble-ai p-5 max-w-[85%] text-sm leading-relaxed self-start animate-in fade-in slide-in-from-left-2' : 'chat-bubble-user p-5 max-w-[85%] text-sm leading-relaxed self-end ml-auto animate-in fade-in slide-in-from-right-2';
             div.innerHTML = text.replace(/\n/g, '<br>');
             win.appendChild(div);
             win.scrollTop = win.scrollHeight;
@@ -344,16 +390,10 @@
 
         function processAIResponse(rawText) {
             let cleanText = rawText, actionData = null;
-            
             const actionMatch = rawText.match(/ACTION_RECS:\s*({[\s\S]*?})/);
-            
             if(actionMatch) {
-                try { 
-                    actionData = JSON.parse(actionMatch[1]); 
-                    cleanText = rawText.replace(actionMatch[0], '').trim();
-                } catch(e) {
-                    console.error("Failed to parse AI JSON block", e);
-                }
+                try { actionData = JSON.parse(actionMatch[1]); cleanText = rawText.replace(actionMatch[0], '').trim(); } 
+                catch(e) { console.error("Failed to parse AI JSON block", e); }
             }
             appendBubble('ai', cleanText);
             if(actionData) renderActionCard(actionData);
@@ -371,7 +411,6 @@
             const btn = e.target;
             btn.innerText = "Applying...";
             btn.disabled = true;
-
             const original = AppState.allActivities.find(a => a.Activity.toLowerCase() === activity.toLowerCase());
             const oldVal = original ? original.Duration : "1.0h";
             
@@ -380,20 +419,15 @@
                 lastAppliedChange = { activity, oldVal };
                 showToast("Schedule Adjusted", "success");
                 btn.parentElement.innerHTML = `<button onclick="revertLastChange(event)" class="flex-1 border border-debt text-debt hover:bg-debt/10 py-3 rounded-xl font-black text-[10px] uppercase transition">Revert Change</button>`;
-            } else {
-                btn.innerText = "Failed";
-                btn.classList.add("bg-debt", "text-white");
-            }
+            } else { btn.innerText = "Failed"; btn.classList.add("bg-debt", "text-white"); }
         }
 
         async function revertLastChange(e) {
             if(!lastAppliedChange) return;
             const btn = e.target;
             btn.innerText = "Reverting...";
-            
             const { activity, oldVal } = lastAppliedChange;
             const res = await fetch(`${BackendAPI}/update_timetable`, { method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ activity, new_val: oldVal }) });
-            
             if(res.ok) {
                 lastAppliedChange = null;
                 btn.parentElement.parentElement.remove();
