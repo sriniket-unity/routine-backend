@@ -48,12 +48,25 @@ def sanitize_ts(ts_str):
         return f"{parts[0]} {h.zfill(2)}:{m.zfill(2)}"
     except: return ts_str
 
-# --- ☁️ CLOUD SYNC STATE (V5.6.1 UPDATED) ---
+def parse_time_to_minutes(t_str):
+    try:
+        parts = t_str.split(' ')
+        time_parts = parts[0].split(':')
+        h = int(time_parts[0])
+        m = int(time_parts[1])
+        mod = parts[1].strip().upper()
+        if h == 12: h = 0
+        minutes = h * 60 + m
+        if mod == 'PM': minutes += 12 * 60
+        return minutes
+    except Exception as e: return 0
+
+# --- ☁️ CLOUD SYNC STATE V5.6.1 (UPDATED) ---
 cloud_state = {
     "state": "READY",
     "activity": None,
     "start_time": None,
-    "accumulated_seconds": 0  # Added to prevent time-jumping when paused
+    "accumulated_seconds": 0  # To prevent time-jumping when paused
 }
 
 # --- 🌐 ENDPOINTS ---
@@ -67,6 +80,53 @@ def health():
         "model": "gemini-3-flash-preview"
     }), 200
 
+# V5.6.1: NEW SINGLE-RESPONSIBILITY ENDPOINT FOR THE DASHBOARD
+@app.route('/get_dashboard', methods=['GET'])
+def get_dashboard():
+    try:
+        if not timetable_ws: init_sheets()
+        all_tt = timetable_ws.get_all_values()
+        # Resilient Header Parsing
+        headers = [h.strip() for h in all_tt[1] if h.strip()] 
+        timetable_data = [dict(zip(headers, r)) for r in all_tt[2:] if any(r)]
+        
+        now = datetime.now(IST)
+        curMin = (now.getHours() * 60) + now.getMinutes()
+        
+        def is_current_session(item):
+            try:
+                time_range = item.get('Time', '').split('-')
+                start_min = parse_time_to_minutes(time_range[0].strip())
+                end_min = parse_time_to_minutes(time_range[1].strip())
+                # Handle end minute wrapping past midnight
+                if end_min < start_min: 
+                    return curMin >= start_min or curMin < end_min
+                return curMin >= start_min and curMin < end_min
+            except: return False
+            
+        # 🕵️‍♂️ HARDENED SESSION FINDER
+        cur_session = next((item for item in timetable_data if is_current_session(item)), None)
+        
+        # If no session found, default to a BREAK state
+        if not cur_session: return jsonify({
+            "status": "success",
+            "prev": timetable_data[-1] if timetable_data else None,
+            "cur": {"Activity": "BREAK", "Duration": "1", "Time": "00:00 - 00:00"},
+            "next": timetable_data[0] if timetable_data else None
+        })
+        
+        idx = timetable_data.index(cur_session)
+        prev_session = timetable_data[idx - 1] if idx > 0 else timetable_data[-1]
+        next_session = timetable_data[idx + 1] if idx < len(timetable_data) - 1 else timetable_data[0]
+
+        return jsonify({
+            "status": "success",
+            "prev": prev_session,
+            "cur": cur_session,
+            "next": next_session
+        })
+    except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
+
 @app.route('/get_state', methods=['GET'])
 def get_state():
     return jsonify({"status": "success", "data": cloud_state}), 200
@@ -79,15 +139,15 @@ def set_state():
     cloud_state["activity"] = data.get("activity")
     cloud_state["start_time"] = data.get("start_time")
     # Store accumulated time safely, default to 0
-    cloud_state["accumulated_seconds"] = data.get("accumulated_seconds", 0) or 0
+    cloud_state["accumulated_seconds"] = int(data.get("accumulated_seconds", 0) or 0)
     return jsonify({"status": "success"}), 200
 
 @app.route('/get_schedule', methods=['GET'])
 def get_schedule():
+    # Existing resilient gspread logic...
     try:
         if not timetable_ws: init_sheets()
         all_val = timetable_ws.get_all_values()
-        # Resilient Header Parsing
         headers = [h.strip() for h in all_val[1] if h.strip()] 
         data = [dict(zip(headers, r)) for r in all_val[2:] if any(r)]
         return jsonify({"status": "success", "data": data})
@@ -95,17 +155,15 @@ def get_schedule():
 
 @app.route('/get_analytics', methods=['GET'])
 def get_analytics():
+    # Existing resilient analytics logic...
     try:
         if not logs_ws: init_sheets()
         raw_logs = logs_ws.get_all_values()
         if len(raw_logs) <= 1: return jsonify({"status": "success", "overall": None, "week": None}), 200
-        
         headers = [h.strip() for h in raw_logs[0] if h.strip()]
         all_logs = [dict(zip(headers, r)) for r in raw_logs[1:] if any(r)]
-        
         now = datetime.now(IST)
         start_of_week = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0)
-
         def process_subset(subset):
             if not subset: return {"study": 0, "adherence": 0, "debt": 0, "chart": [0.0]*7}
             total_study = sum(float(r.get('Actual (hrs)') or 0) for r in subset)
@@ -119,58 +177,45 @@ def get_analytics():
                     chart[dt.weekday()] += float(r.get('Actual (hrs)') or 0)
                 except: continue
             return {"study": round(total_study, 1), "adherence": adherence, "debt": round(total_debt, 1), "chart": chart}
-
         return jsonify({"status": "success", "overall": process_subset(all_logs), "week": process_subset([r for r in all_logs if IST.localize(datetime.strptime(sanitize_ts(r.get('Timestamp', '')), '%Y-%m-%d %H:%M')) >= start_of_week])}), 200
     except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/chat', methods=['POST'])
 def chat():
+    # Existing chat logic...
     try:
         if not chat_logs_ws: init_sheets()
         user_msg = request.json.get('message')
-
-        # 1. Fetch Schedule Context
         all_tt = timetable_ws.get_all_values()
         tt_headers = [h.strip() for h in all_tt[1] if h.strip()]
         timetable_data = [dict(zip(tt_headers, r)) for r in all_tt[2:] if any(r)]
         lean_tt = timetable_data[-10:]
-
-        # 2. Fetch Chat Memory
         all_chat = chat_logs_ws.get_all_values()
         memory = []
         if len(all_chat) > 1:
             chat_headers = [h.strip() for h in all_chat[0] if h.strip()]
             memory = [dict(zip(chat_headers, r)) for r in all_chat[1:] if any(r)][-6:]
-
-        # 3. Prompt Construction
         prompt = f"""
-        System: You are 'Routine Flow Architect' for Sriniket.
-        Context: Sriniket is recovering from a bike accident.
+        System: You are 'Routine Flow Architect' for Sriniket. Sriniket is recovering from a bike accident.
         Schedule: {json.dumps(lean_tt)}
         Memory: {json.dumps(memory)}
-        
         User Input: {user_msg}
-        
         Mandatory Change Format:
         ACTION_RECS: {{"action_target": "Activity Name", "new_val": "0.5h", "reason": "Rest and recovery"}}
         """
-
         model = genai.GenerativeModel('gemini-3-flash-preview')
         response = model.generate_content(prompt)
         ai_text = response.text
-
-        # 4. Save Interaction to Sheets
         ts = datetime.now(IST).strftime('%Y-%m-%d %H:%M')
         chat_logs_ws.append_rows([[ts, "User", user_msg], [ts, "AI", ai_text]])
-
         return jsonify({"status": "success", "text": ai_text}), 200
-
     except Exception as e:
         app.logger.error(traceback.format_exc())
         return jsonify({"status": "error", "message": f"QA_DEBUG: {str(e)}"}), 500
 
 @app.route('/log_session', methods=['POST'])
 def log_session():
+    # Existing resilient logging logic...
     try:
         d = request.json
         ts = datetime.now(IST).strftime('%Y-%m-%d %H:%M')
@@ -180,6 +225,7 @@ def log_session():
 
 @app.route('/clear_chat', methods=['DELETE'])
 def clear_chat():
+    # Existing chat clearing logic...
     try:
         records = chat_logs_ws.get_all_values()
         if len(records) > 1:
@@ -189,6 +235,7 @@ def clear_chat():
 
 @app.route('/update_timetable', methods=['PATCH'])
 def update_timetable():
+    # Existing timetable updating logic...
     try:
         data = request.json
         pattern = re.compile(rf'^{re.escape(data.get("activity"))}$', re.IGNORECASE)
