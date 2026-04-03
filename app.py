@@ -1,4 +1,4 @@
-# start of version v5.8.4
+# start of version v5.8.5
 from dotenv import load_dotenv
 load_dotenv()
 from flask import Flask, request, jsonify
@@ -86,7 +86,7 @@ cloud_state = {
 def health():
     return jsonify({
         "service": "Routine Flow Architect", 
-        "version": "5.8.4", 
+        "version": "5.8.5", 
         "status": "Online",
         "model": "gemini-3-flash-preview"
     }), 200
@@ -257,7 +257,6 @@ def clear_chat():
         return jsonify({"status": "success"}), 200
     except Exception as e: return jsonify({"status": "error"}), 500
 
-# V5.8.4: Added endpoint to clear analytics logs
 @app.route('/clear_logs', methods=['DELETE'])
 def clear_logs():
     try:
@@ -284,4 +283,4 @@ def update_timetable():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
-# end of version v5.8.4
+# end of version v5.8.5

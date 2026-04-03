@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Routine Flow | Architect</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23050505'/><text x='50%' y='50%' font-family='sans-serif' font-weight='900' font-style='italic' font-size='48' fill='%23FFFFFF' text-anchor='middle' dy='.35em'>RF</text></svg>">
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono:wght@700&family=Outfit:wght@800&display=swap" rel="stylesheet">
     <script>
@@ -116,10 +118,10 @@
                 
                 <div class="stat-card flex flex-col items-center justify-center py-8">
                     <div class="text-[10px] text-white/50 font-black uppercase mb-6 tracking-widest">Adherence</div>
-                    <div class="relative flex items-center justify-center w-full max-w-[150px] aspect-square">
-                        <svg class="w-full h-full transform -rotate-90" viewBox="0 0 160 160">
-                            <circle cx="80" cy="80" r="60" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="12"></circle>
-                            <circle id="adherence-circle" cx="80" cy="80" r="60" fill="none" stroke="#FFFFFF" stroke-width="12" stroke-dasharray="377" stroke-dashoffset="377" stroke-linecap="round" class="transition-all duration-1000 ease-out drop-shadow-[0_0_12px_rgba(255,255,255,0.5)]"></circle>
+                    <div class="relative flex items-center justify-center w-full max-w-[160px] aspect-square">
+                        <svg class="w-full h-full transform -rotate-90" viewBox="0 0 200 200">
+                            <circle cx="100" cy="100" r="60" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="12"></circle>
+                            <circle id="adherence-circle" cx="100" cy="100" r="60" fill="none" stroke="#FFFFFF" stroke-width="12" stroke-dasharray="377" stroke-dashoffset="377" stroke-linecap="round" class="transition-all duration-1000 ease-out drop-shadow-[0_0_12px_rgba(255,255,255,0.5)]"></circle>
                         </svg>
                         <div id="circle-pct" class="absolute text-3xl font-black tracking-tighter">0%</div>
                     </div>
@@ -160,9 +162,16 @@
             syncWithCloud();
 
             if(localChatHistory.length === 0) {
-                appendBubble('ai', "System: Memory Loaded. Architect Engine V5.8.4 online.");
+                appendBubble('ai', "System: Memory Loaded. Architect Engine V5.8.5 online.");
             } else {
-                localChatHistory.forEach(m => appendBubble(m.type, m.text));
+                // V5.8.5: Reparse AI text on page load to perfectly rebuild action cards dynamically!
+                localChatHistory.forEach(m => {
+                    if (m.type === 'ai') {
+                        processAIResponse(m.text);
+                    } else {
+                        appendBubble(m.type, m.text);
+                    }
+                });
             }
         });
 
@@ -258,12 +267,23 @@
             } catch(e) {}
         }
 
+        // V5.8.5: Live Tab Tracking feature incorporated directly into the display updater
         function updateTimerDisplay() {
             const abs = Math.max(0, AppState.timerSeconds);
             const h = Math.floor(abs/3600).toString().padStart(2,'0');
             const m = Math.floor((abs%3600)/60).toString().padStart(2,'0');
             const s = (abs%60).toString().padStart(2,'0');
-            document.getElementById('main-timer').innerText = `${h}:${m}:${s}`;
+            const timeString = `${h}:${m}:${s}`;
+            
+            // Update Dashboard Timer
+            document.getElementById('main-timer').innerText = timeString;
+
+            // Update Live Tab Tracker
+            if (AppState.timerState === 'RUNNING' && AppState.currentActivity) {
+                document.title = `⏳ [${timeString}] ${AppState.currentActivity.Activity}`;
+            } else {
+                document.title = "Routine Flow | Architect";
+            }
         }
 
         function startTimerLoop() {
