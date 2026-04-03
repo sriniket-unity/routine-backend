@@ -1,4 +1,4 @@
-# start of version v5.8.2
+# start of version v5.8.4
 from dotenv import load_dotenv
 load_dotenv()
 from flask import Flask, request, jsonify
@@ -12,6 +12,7 @@ import pytz
 import re 
 import traceback
 import logging
+import threading
 
 app = Flask(__name__)
 CORS(app)
@@ -85,7 +86,7 @@ cloud_state = {
 def health():
     return jsonify({
         "service": "Routine Flow Architect", 
-        "version": "5.8.2", 
+        "version": "5.8.4", 
         "status": "Online",
         "model": "gemini-3-flash-preview"
     }), 200
@@ -109,11 +110,9 @@ def get_schedule():
     try:
         if not timetable_ws: init_sheets()
         if not timetable_ws: return jsonify({"status": "error", "message": "DB ERROR"}), 500
-        
         all_val = timetable_ws.get_all_values()
         headers = [h.strip() for h in all_val[1] if h.strip()] 
         data = [dict(zip(headers, r)) for r in all_val[2:] if any(r)]
-        
         now = datetime.now(IST)
         curMin = (now.hour * 60) + now.minute
         cur_session = None
@@ -123,10 +122,8 @@ def get_schedule():
             s, e = parse_time_to_minutes(times[0]), parse_time_to_minutes(times[1])
             if (e < s and (curMin >= s or curMin < e)) or (s <= curMin < e):
                 cur_session = item; break
-        
         if not cur_session:
             return jsonify({"status": "success", "data": data, "cur": {"Activity": "BREAK", "Duration": "1"}, "prev": {"Activity": "---"}, "next": {"Activity": "---"}})
-        
         idx = data.index(cur_session)
         return jsonify({
             "status": "success",
@@ -142,46 +139,33 @@ def get_analytics():
     try:
         if not logs_ws: init_sheets()
         if not logs_ws: return jsonify({"status": "error"}), 500
-        
         raw_logs = logs_ws.get_all_values()
         if len(raw_logs) <= 1: return jsonify({"status": "success", "overall": None, "week": None}), 200
-
         headers = [h.strip() for h in raw_logs[0] if h.strip()]
         all_logs = [dict(zip(headers, r)) for r in raw_logs[1:] if any(r)]
-
         now = datetime.now(IST)
         start_of_week = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0)
 
         def process_subset(subset):
             if not subset: return {"study": 0, "adherence": 0, "debt": 0, "chart": [0.0]*7}
-            
-            # 1. Flexible Key Matching
             keys = list(subset[0].keys()) if subset else []
             act_k = next((k for k in keys if 'actual' in k.lower()), None)
             debt_k = next((k for k in keys if 'debt' in k.lower()), None)
             ts_k = next((k for k in keys if 'time' in k.lower() or 'stamp' in k.lower()), None)
-
-            # 2. Filter out "Ghost Rows"
             valid_rows = [r for r in subset if str(r.get(act_k, '')).strip() or str(r.get(debt_k, '')).strip()]
             if not valid_rows: return {"study": 0, "adherence": 0, "debt": 0, "chart": [0.0]*7}
-
             total_study = sum(safe_float(r.get(act_k)) for r in valid_rows)
             total_debt = sum(safe_float(r.get(debt_k)) for r in valid_rows)
-            
-            # 3. Accurate Adherence Math
             completed = sum(1 for r in valid_rows if safe_float(r.get(act_k)) > 0)
             adherence = round((completed / len(valid_rows)) * 100)
-            
             chart = [0.0] * 7
             for r in valid_rows:
                 try:
                     dt = datetime.strptime(sanitize_ts(r.get(ts_k, '')), '%Y-%m-%d %H:%M')
                     chart[dt.weekday()] += safe_float(r.get(act_k))
                 except: continue
-                
             return {"study": round(total_study, 1), "adherence": adherence, "debt": round(total_debt, 1), "chart": chart}
 
-        # Filter logs for 'This Week' safely
         week_logs = []
         ts_key = next((k for k in all_logs[0].keys() if 'time' in k.lower() or 'stamp' in k.lower()), None)
         for r in all_logs:
@@ -189,7 +173,6 @@ def get_analytics():
                 if IST.localize(datetime.strptime(sanitize_ts(r.get(ts_key, '')), '%Y-%m-%d %H:%M')) >= start_of_week:
                     week_logs.append(r)
             except: continue
-
         return jsonify({
             "status": "success", 
             "overall": process_subset(all_logs), 
@@ -199,23 +182,30 @@ def get_analytics():
         app.logger.error(traceback.format_exc())
         return jsonify({"status": "error", "message": str(e)}), 500
 
+def save_chat_bg(timestamp, user_message, ai_message):
+    try:
+        if chat_logs_ws:
+            chat_logs_ws.append_rows([[timestamp, "User", user_message], [timestamp, "AI", ai_message]])
+    except Exception as e:
+        app.logger.error(f"Background chat save failed: {e}")
+
 @app.route('/chat', methods=['POST'])
 def chat():
     try:
         if not chat_logs_ws: init_sheets()
         user_msg = request.json.get('message')
-
+        
         all_tt = timetable_ws.get_all_values()
         tt_headers = [h.strip() for h in all_tt[1] if h.strip()]
         timetable_data = [dict(zip(tt_headers, r)) for r in all_tt[2:] if any(r)]
         lean_tt = timetable_data[-10:]
-
+        
         all_chat = chat_logs_ws.get_all_values()
         memory = []
         if len(all_chat) > 1:
             chat_headers = [h.strip() for h in all_chat[0] if h.strip()]
             memory = [dict(zip(chat_headers, r)) for r in all_chat[1:] if any(r)][-6:]
-
+            
         prompt = f"""
         System: You are 'Routine Flow Architect', an AI assistant for Sriniket.
         Context: Sriniket is recovering from a bike accident.
@@ -233,14 +223,12 @@ def chat():
         """
         model = genai.GenerativeModel('gemini-3-flash-preview')
         response = model.generate_content(prompt)
-        ai_text = response.text
-
+        
         ts = datetime.now(IST).strftime('%Y-%m-%d %H:%M')
-        chat_logs_ws.append_rows([[ts, "User", user_msg], [ts, "AI", ai_text]])
-        return jsonify({"status": "success", "text": ai_text}), 200
-    except Exception as e:
-        app.logger.error(traceback.format_exc())
-        return jsonify({"status": "error", "message": f"QA_DEBUG: {str(e)}"}), 500
+        threading.Thread(target=save_chat_bg, args=(ts, user_msg, response.text)).start()
+        
+        return jsonify({"status": "success", "text": response.text}), 200
+    except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/log_session', methods=['POST'])
 def log_session():
@@ -255,39 +243,32 @@ def log_session():
 def bulk_log():
     try:
         if not logs_ws: init_sheets()
-        if not logs_ws: return jsonify({"status": "error", "message": "DB not connected"}), 500
-        
         data = request.json
-        if not isinstance(data, list):
-            return jsonify({"status": "error", "message": "Payload must be a JSON array"}), 400
-        
-        rows_to_insert = []
-        for d in data:
-            ts = datetime.now(IST).strftime('%Y-%m-%d %H:%M')
-            rows_to_insert.append([
-                ts, 
-                d.get('activity', 'Unknown'), 
-                d.get('planned_duration', 0), 
-                d.get('actual_duration', 0), 
-                d.get('time_debt', 0)
-            ])
-        
-        if rows_to_insert:
-            logs_ws.append_rows(rows_to_insert)
-        
-        return jsonify({"status": "success", "inserted": len(rows_to_insert)}), 200
-    except Exception as e: 
-        app.logger.error(traceback.format_exc())
-        return jsonify({"status": "error", "message": str(e)}), 500
+        rows = [[datetime.now(IST).strftime('%Y-%m-%d %H:%M'), d.get('activity'), d.get('planned_duration'), d.get('actual_duration'), d.get('time_debt', 0)] for d in data]
+        logs_ws.append_rows(rows)
+        return jsonify({"status": "success", "inserted": len(rows)}), 200
+    except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/clear_chat', methods=['DELETE'])
 def clear_chat():
     try:
         records = chat_logs_ws.get_all_values()
-        if len(records) > 1:
-            chat_logs_ws.delete_rows(2, len(records))
+        if len(records) > 1: chat_logs_ws.delete_rows(2, len(records))
         return jsonify({"status": "success"}), 200
     except Exception as e: return jsonify({"status": "error"}), 500
+
+# V5.8.4: Added endpoint to clear analytics logs
+@app.route('/clear_logs', methods=['DELETE'])
+def clear_logs():
+    try:
+        if not logs_ws: init_sheets()
+        records = logs_ws.get_all_values()
+        if len(records) > 1:
+            logs_ws.delete_rows(2, len(records))
+        return jsonify({"status": "success"}), 200
+    except Exception as e: 
+        app.logger.error(traceback.format_exc())
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/update_timetable', methods=['PATCH'])
 def update_timetable():
@@ -303,4 +284,4 @@ def update_timetable():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
-# end of version v5.8.2
+# end of version v5.8.4
