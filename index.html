@@ -70,7 +70,8 @@
         document.addEventListener('DOMContentLoaded', () => {
             fetchData();
             setInterval(() => {
-                document.getElementById('sync-indicator')?.innerText = ""; 
+                const syncInd = document.getElementById('sync-indicator');
+                if (syncInd) syncInd.innerText = ""; 
             }, 5000);
             appendBubble('ai', "Memory initialized. Architect Engine V5.6.6 online. How can I help you today, Sriniket?");
         });
