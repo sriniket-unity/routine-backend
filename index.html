@@ -4,38 +4,36 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Routine Flow | Architect</title>
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='white'/><path d='M30 50 L50 20 L45 50 L70 50 L50 80 L55 50 Z' fill='black'/></svg>">
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono:wght@700&family=Outfit:wght@800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
     <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: { extend: { colors: { obsidian: '#050505', sage: '#E8F5E9', debt: '#FF6B6B', glass: 'rgba(255,255,255,0.03)' } } }
-        }
+        tailwind.config = { darkMode: 'class', theme: { extend: { colors: { obsidian: '#050505', debt: '#FF6B6B' } } } }
     </script>
     <style>
-        body { background-color: #000000; color: #E5E7EB; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+        body { background-color: #000000; color: #E5E7EB; font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
         .glass-panel { background: rgba(30,30,30,0.7); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,0.05); }
         .tab-active { color: white !important; border-bottom: 2px solid white !important; }
         .tab-inactive { color: rgba(255,255,255,0.3) !important; border-bottom: 2px solid transparent !important; }
         .clock-font { font-family: 'JetBrains Mono', monospace; letter-spacing: -0.05em; }
-        ::-webkit-scrollbar { display: none; }
-        @keyframes pulse-sync { 0% { opacity: 0.2; } 50% { opacity: 1; } 100% { opacity: 0.2; } }
+        .stat-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 1.5rem; padding: 1.5rem; }
+        .chart-bar { transition: height 0.6s ease; }
+        @keyframes pulse-sync { 0%, 100% { opacity: 0.2; } 50% { opacity: 1; } }
         .sync-active { animation: pulse-sync 2s infinite; color: #4ade80; }
+        ::-webkit-scrollbar { display: none; }
     </style>
 </head>
-<body class="font-sans">
+<body>
 
     <header class="fixed top-0 left-0 right-0 z-50 glass-panel">
         <div class="max-w-7xl mx-auto px-6 py-5 flex justify-between items-center">
             <div class="flex flex-col">
-                <h1 class="font-display text-xl font-900 tracking-tighter text-white uppercase italic">ROUTINE<span class="text-white/70 not-italic">FLOW</span></h1>
+                <h1 class="text-xl font-900 tracking-tighter text-white uppercase italic">ROUTINE<span class="text-white/70 not-italic">FLOW</span></h1>
                 <div class="flex items-center space-x-2">
-                    <span id="header-live-clock" class="clock-font text-[10px] text-white/40 tracking-widest uppercase">00:00:00 AM</span>
-                    <span id="sync-indicator" class="text-[8px] tracking-widest uppercase text-white/20"></span>
+                    <span id="header-live-clock" class="clock-font text-[10px] text-white/40 uppercase">00:00:00 AM</span>
+                    <span id="sync-indicator" class="text-[8px] uppercase text-white/20"></span>
                 </div>
             </div>
-            <nav class="flex space-x-4 md:space-x-6 font-black text-[9px] md:text-[10px] tracking-[0.2em] md:tracking-[0.3em]">
+            <nav class="flex space-x-6 font-black text-[10px] tracking-[0.3em]">
                 <button id="nav-dashboard" onclick="switchTab('dashboard')" class="pb-1 tab-active uppercase">DASHBOARD</button>
                 <button id="nav-insights" onclick="switchTab('insights')" class="pb-1 tab-inactive uppercase">ARCHITECT</button>
                 <button id="nav-analytics" onclick="switchTab('analytics')" class="pb-1 tab-inactive uppercase">ANALYTICS</button>
@@ -45,70 +43,89 @@
 
     <main class="pt-24 max-w-7xl mx-auto min-h-screen">
         
-        <section id="view-dashboard" class="p-6 flex flex-col items-center space-y-12 md:space-y-20">
-            
-            <div class="w-full grid grid-cols-1 md:grid-cols-3 gap-8 items-center text-center">
-                <div class="flex flex-col opacity-40">
-                    <span class="text-[9px] uppercase tracking-widest mb-1">Previous</span>
-                    <h3 id="prev-activity" class="font-black text-[10px] md:text-xs uppercase">---</h3>
-                </div>
-                
-                <div class="flex flex-col items-center">
-                    <span id="current-activity" class="border border-white/10 px-6 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-white/5">---</span>
-                    <div class="mt-4 clock-font text-xl md:text-2xl font-black">
-                        <span id="activity-progress" class="text-white">0.00h</span>
-                        <span class="text-white/10 mx-1">/</span>
-                        <span id="activity-total" class="text-white/40">0.00h</span>
-                    </div>
-                </div>
-
-                <div class="flex flex-col opacity-40">
-                    <span class="text-[9px] uppercase tracking-widest mb-1">Next</span>
-                    <h3 id="next-activity" class="font-black text-[10px] md:text-xs uppercase">---</h3>
-                </div>
+        <section id="view-dashboard" class="p-6 flex flex-col items-center space-y-12">
+            <div class="w-full grid grid-cols-1 md:grid-cols-3 gap-8 items-center text-center text-[12px] uppercase font-black">
+                <div id="prev-activity" class="text-white/70">---</div>
+                <div id="current-activity" class="text-white border border-white/10 px-4 py-1 rounded-full text-[10px]">LOADING...</div>
+                <div id="next-activity" class="text-white/70">---</div>
             </div>
-
             <div id="main-timer" class="clock-font text-[18vw] md:text-[12rem] font-bold text-white tracking-tighter leading-none py-10">00:00:00</div>
-
-            <div class="flex flex-col md:flex-row items-center gap-4 md:gap-6 w-full max-w-xl">
-                <button onclick="handleCheckIn()" class="w-full md:flex-1 bg-white text-black py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest active:scale-95 transition-transform">Check-In</button>
-                <button id="btn-pause" onclick="handlePauseResume()" class="w-full md:flex-1 border border-white/10 text-white/60 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:text-white active:scale-95 transition-transform">Pause</button>
-                <button onclick="handleCheckOut(event)" class="w-full md:flex-1 border border-white/10 text-white/40 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:text-white active:scale-95 transition-transform">Check-Out</button>
+            <div class="flex flex-col md:flex-row items-center gap-4 w-full max-w-xl">
+                <button onclick="handleCheckIn()" class="w-full md:flex-1 bg-white text-black py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest active:scale-95 transition-all">Check-In</button>
+                <button id="btn-pause" onclick="handlePauseResume()" class="w-full md:flex-1 border border-white/10 text-white/60 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest active:scale-95">Pause</button>
+                <button onclick="handleCheckOut(event)" class="w-full md:flex-1 border border-white/10 text-white/40 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest active:scale-95">Check-Out</button>
             </div>
-
         </section>
 
-        <section id="view-insights" class="hidden flex h-[calc(100vh-120px)]">
-            <div class="w-64 border-r border-white/5 p-6 flex flex-col justify-between hidden md:flex">
-                <div class="space-y-6">
-                    <h4 class="text-[10px] font-black text-white/30 uppercase tracking-widest">Memory Logs</h4>
-                    <div id="chat-history-list" class="space-y-2">
-                        <div class="p-3 bg-white/5 rounded-xl text-[9px] font-bold text-white/60 uppercase">Persistent Session</div>
-                    </div>
-                </div>
-                <button onclick="clearChatHistory()" class="w-full py-3 border border-debt/30 text-debt/60 hover:text-debt hover:border-debt rounded-xl text-[9px] font-black uppercase tracking-widest transition-all">Clear History</button>
-            </div>
-            <div class="flex-1 flex flex-col relative bg-obsidian">
-                <div id="chat-window" class="chat-container overflow-y-auto p-6 space-y-6 pb-40" style="height: calc(100vh - 220px);"></div>
-                <div class="absolute bottom-6 left-0 right-0 px-6">
-                    <div class="max-w-3xl mx-auto relative">
-                        <input id="chat-input" type="text" placeholder="Consult Architect..." onkeypress="if(event.key === 'Enter') sendMessage()" class="w-full bg-white/5 border border-white/10 rounded-2xl py-5 px-6 text-sm focus:outline-none focus:border-white/20 transition-all">
-                        <button onclick="sendMessage()" class="absolute right-4 top-1/2 -translate-y-1/2 bg-white text-black p-2 rounded-xl"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"/></svg></button>
-                    </div>
+        <section id="view-insights" class="hidden h-[calc(100vh-120px)] p-6">
+            <div class="flex flex-col h-full bg-white/5 rounded-3xl p-6 relative overflow-hidden">
+                <div id="chat-window" class="flex-1 overflow-y-auto space-y-4 pb-20 scroll-smooth"></div>
+                <div class="absolute bottom-6 left-6 right-6">
+                    <input id="chat-input" type="text" onkeypress="if(event.key==='Enter')sendMessage()" placeholder="Ask Architect..." class="w-full bg-white/10 border border-white/10 rounded-2xl p-5 text-sm outline-none">
                 </div>
             </div>
         </section>
 
-        <section id="view-analytics" class="hidden p-6 space-y-8 max-w-5xl mx-auto">
-             </section>
+        <section id="view-analytics" class="hidden p-6 space-y-8">
+            <div class="flex justify-between items-center">
+                <h2 class="text-xl font-black uppercase tracking-tight">Performance <span class="text-white/20">Metrics</span></h2>
+                <div class="flex bg-white/5 p-1 rounded-xl">
+                    <button onclick="toggleRange('week')" id="btn-week" class="px-4 py-2 text-[10px] font-black uppercase rounded-lg bg-white text-black">Week</button>
+                    <button onclick="toggleRange('overall')" id="btn-overall" class="px-4 py-2 text-[10px] font-black uppercase text-white/30">Overall</button>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="stat-card">
+                    <span class="text-[9px] font-black text-white/30 uppercase tracking-widest">Total Study</span>
+                    <div class="text-3xl font-black mt-2"><span id="stat-study-hrs">0.0</span> <span class="text-xs text-white/20 uppercase">hrs</span></div>
+                </div>
+                <div class="stat-card">
+                    <span class="text-[9px] font-black text-white/30 uppercase tracking-widest">Adherence</span>
+                    <div id="stat-adherence" class="text-3xl font-black mt-2">0%</div>
+                </div>
+                <div class="stat-card">
+                    <span class="text-[9px] font-black text-debt uppercase tracking-widest">Time Debt</span>
+                    <div class="text-3xl font-black text-debt mt-2"><span id="stat-debt">0.0</span> <span class="text-xs opacity-30 uppercase">hrs</span></div>
+                </div>
+            </div>
+            <div class="stat-card h-64 flex items-end justify-between space-x-2 pt-10">
+                <div class="flex flex-col items-center flex-1 h-full justify-end">
+                    <div id="bar-0" class="bg-white/10 w-full rounded-t-lg chart-bar h-[10%]"></div>
+                    <span class="text-[8px] mt-2 opacity-20">M</span>
+                </div>
+                <div class="flex flex-col items-center flex-1 h-full justify-end">
+                    <div id="bar-1" class="bg-white/10 w-full rounded-t-lg chart-bar h-[10%]"></div>
+                    <span class="text-[8px] mt-2 opacity-20">T</span>
+                </div>
+                <div class="flex flex-col items-center flex-1 h-full justify-end">
+                    <div id="bar-2" class="bg-white/10 w-full rounded-t-lg chart-bar h-[10%]"></div>
+                    <span class="text-[8px] mt-2 opacity-20">W</span>
+                </div>
+                <div class="flex flex-col items-center flex-1 h-full justify-end">
+                    <div id="bar-3" class="bg-white/10 w-full rounded-t-lg chart-bar h-[10%]"></div>
+                    <span class="text-[8px] mt-2 opacity-20">T</span>
+                </div>
+                <div class="flex flex-col items-center flex-1 h-full justify-end">
+                    <div id="bar-4" class="bg-white/10 w-full rounded-t-lg chart-bar h-[10%]"></div>
+                    <span class="text-[8px] mt-2 opacity-20">F</span>
+                </div>
+                <div class="flex flex-col items-center flex-1 h-full justify-end">
+                    <div id="bar-5" class="bg-white/10 w-full rounded-t-lg chart-bar h-[10%]"></div>
+                    <span class="text-[8px] mt-2 opacity-20">S</span>
+                </div>
+                <div class="flex flex-col items-center flex-1 h-full justify-end">
+                    <div id="bar-6" class="bg-white/10 w-full rounded-t-lg chart-bar h-[10%]"></div>
+                    <span class="text-[8px] mt-2 opacity-20">S</span>
+                </div>
+            </div>
+        </section>
     </main>
-
-    <div id="toast-container" class="fixed bottom-10 right-10 flex flex-col gap-4 z-[110]"></div>
 
     <script>
         const BackendAPI = "https://routine-backend-7yn2.onrender.com";
-        let AppState = { currentActivity: null, allActivities: [], timerSeconds: 0, totalSeconds: 0, timerState: 'READY', timerInterval: null, accumulated_seconds: 0 };
+        let AppState = { currentActivity: null, allActivities: [], timerSeconds: 0, totalSeconds: 0, timerState: 'READY', timerInterval: null, accumulated_seconds: 0, analyticsData: null };
         let localChatHistory = JSON.parse(localStorage.getItem('routine_chat_cache')) || [];
+        let lastAppliedChange = null;
 
         document.addEventListener('DOMContentLoaded', () => {
             fetchDashboard();
@@ -124,30 +141,64 @@
         async function fetchDashboard() {
             try {
                 const res = await fetch(`${BackendAPI}/get_dashboard`);
-                const d = await res.json();
-                if (d.status === "success") {
+                const result = await res.json();
+                
+                if (result.status === "success") {
+                    const d = result;
+                    
+                    // The backend now does all the prev/next work! We just display it.
+                    AppState.allActivities = [d.cur]; // We only care about current for now
                     AppState.currentActivity = d.cur;
+                    
                     document.getElementById('prev-activity').innerText = d.prev.Activity;
+                    // V5.6.5 visual changes are applied via CSS, no JS change needed here
                     document.getElementById('current-activity').innerText = d.cur.Activity;
                     document.getElementById('next-activity').innerText = d.next.Activity;
+                    
                     AppState.totalSeconds = Math.round((parseFloat(d.cur.Duration) || 1) * 3600);
                     AppState.timerSeconds = AppState.totalSeconds;
                     document.getElementById('activity-total').innerText = `${parseFloat(d.cur.Duration).toFixed(2)}h`;
                     updateTimerDisplay();
-                    reloadLocalState();
+
+                    // V5.6.1: Reload Local State (Refresh while paused or running)
+                    const savedStart = localStorage.getItem('routine_timer_start');
+                    const savedActivity = localStorage.getItem('routine_timer_activity');
+                    const savedAcc = localStorage.getItem('routine_timer_accumulated');
+
+                    if (savedActivity === d.cur.Activity) {
+                        AppState.accumulated_seconds = parseInt(savedAcc) || 0;
+                        if (savedStart) {
+                            AppState.timerState = 'RUNNING';
+                            document.getElementById('btn-pause').innerText = "PAUSE";
+                            startTimerLoop();
+                        } else if (AppState.accumulated_seconds > 0) {
+                            AppState.timerState = 'PAUSED';
+                            document.getElementById('btn-pause').innerText = "RESUME";
+                            AppState.timerSeconds = AppState.totalSeconds - AppState.accumulated_seconds;
+                            updateTimerDisplay();
+                        }
+                    }
                 }
-            } catch(e) { showToast("Backend Sync Error", "error"); }
+            } catch(e) { console.error("Sync Error"); showToast("Backend Offline", "error"); }
         }
 
         async function syncWithCloud() {
             try {
                 const res = await fetch(`${BackendAPI}/get_state`);
                 const result = await res.json();
+                
                 if (result.status === "success") {
                     const cloud = result.data;
                     const indicator = document.getElementById('sync-indicator');
-                    indicator.innerText = ""; 
-                    indicator.className = cloud.state === 'RUNNING' ? "text-[8px] sync-active" : "text-[8px] text-white/20";
+                    
+                    indicator.innerText = ""; // Silent unless offline
+                    if (cloud.state === 'RUNNING') {
+                        indicator.className = "text-[8px] tracking-widest uppercase sync-active";
+                    } else if (cloud.state === 'PAUSED') {
+                        indicator.className = "text-[8px] tracking-widest uppercase text-yellow-400";
+                    } else {
+                        indicator.className = "text-[8px] tracking-widest uppercase text-white/20";
+                    }
 
                     if (cloud.state === 'RUNNING' && cloud.start_time) {
                         const localStart = localStorage.getItem('routine_timer_start');
@@ -165,81 +216,141 @@
                             clearInterval(AppState.timerInterval);
                             AppState.timerState = 'PAUSED';
                             AppState.accumulated_seconds = cloud.accumulated_seconds || 0;
+                            
                             localStorage.setItem('routine_timer_accumulated', AppState.accumulated_seconds);
                             localStorage.removeItem('routine_timer_start');
                             document.getElementById('btn-pause').innerText = "RESUME";
+                            
                             AppState.timerSeconds = AppState.totalSeconds - AppState.accumulated_seconds;
                             updateTimerDisplay();
                         }
                     } else if (cloud.state === 'READY' && AppState.timerState !== 'READY') {
                          clearInterval(AppState.timerInterval);
                          AppState.timerState = 'READY';
-                         localStorage.clear();
+                         localStorage.removeItem('routine_timer_start');
+                         localStorage.removeItem('routine_timer_activity');
+                         localStorage.removeItem('routine_timer_accumulated');
                          location.reload(); 
                     }
                 }
-            } catch(e) { document.getElementById('sync-indicator').innerText = "SYNC OFFLINE"; }
+            } catch(e) {
+                document.getElementById('sync-indicator').innerText = "SYNC OFFLINE";
+                document.getElementById('sync-indicator').className = "text-[8px] tracking-widest uppercase text-debt";
+            }
         }
 
         async function handleCheckIn() { 
-            if(AppState.timerState !== 'READY') return;
-            AppState.timerState = 'RUNNING'; 
-            const startTime = Date.now();
-            localStorage.setItem('routine_timer_start', startTime);
-            localStorage.setItem('routine_timer_activity', AppState.currentActivity.Activity);
-            startTimerLoop();
-            document.getElementById('btn-pause').innerText = "PAUSE";
-            await fetch(`${BackendAPI}/set_state`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ state: 'RUNNING', activity: AppState.currentActivity.Activity, start_time: startTime, accumulated_seconds: 0 }) });
+            if(AppState.timerState === 'READY') { 
+                AppState.timerState = 'RUNNING'; 
+                AppState.accumulated_seconds = 0;
+                const startTime = Date.now();
+                
+                localStorage.setItem('routine_timer_start', startTime);
+                localStorage.setItem('routine_timer_activity', AppState.currentActivity.Activity);
+                localStorage.setItem('routine_timer_accumulated', 0);
+                startTimerLoop();
+                document.getElementById('btn-pause').innerText = "PAUSE";
+                
+                try {
+                    await fetch(`${BackendAPI}/set_state`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ state: 'RUNNING', activity: AppState.currentActivity.Activity, start_time: startTime, accumulated_seconds: 0 })
+                    });
+                    syncWithCloud(); 
+                } catch(e) { showToast("Cloud Sync Failed", "error"); }
+            } 
         }
 
         async function handlePauseResume() {
             if (AppState.timerState === 'READY') return;
+
             if (AppState.timerState === 'RUNNING') {
                 clearInterval(AppState.timerInterval);
                 AppState.timerState = 'PAUSED';
-                const start = parseInt(localStorage.getItem('routine_timer_start'));
-                if (start) AppState.accumulated_seconds += Math.floor((Date.now() - start) / 1000);
+                
+                const savedStart = parseInt(localStorage.getItem('routine_timer_start'));
+                if (savedStart) {
+                    const elapsedRealTimeSeconds = Math.floor((Date.now() - savedStart) / 1000);
+                    AppState.accumulated_seconds += elapsedRealTimeSeconds;
+                }
+                
                 localStorage.setItem('routine_timer_accumulated', AppState.accumulated_seconds);
-                localStorage.removeItem('routine_timer_start');
+                localStorage.removeItem('routine_timer_start'); 
                 document.getElementById('btn-pause').innerText = "RESUME";
-                await fetch(`${BackendAPI}/set_state`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ state: 'PAUSED', activity: AppState.currentActivity.Activity, start_time: null, accumulated_seconds: AppState.accumulated_seconds }) });
-            } else {
+
+                try {
+                    await fetch(`${BackendAPI}/set_state`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ state: 'PAUSED', activity: AppState.currentActivity.Activity, start_time: null, accumulated_seconds: AppState.accumulated_seconds })
+                    });
+                } catch(e) { showToast("Cloud Sync Failed", "error"); }
+
+            } else if (AppState.timerState === 'PAUSED') {
                 AppState.timerState = 'RUNNING';
-                const start = Date.now();
-                localStorage.setItem('routine_timer_start', start);
+                const startTime = Date.now();
+                
+                localStorage.setItem('routine_timer_start', startTime);
                 document.getElementById('btn-pause').innerText = "PAUSE";
                 startTimerLoop();
-                await fetch(`${BackendAPI}/set_state`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ state: 'RUNNING', activity: AppState.currentActivity.Activity, start_time: start, accumulated_seconds: AppState.accumulated_seconds }) });
+
+                try {
+                    await fetch(`${BackendAPI}/set_state`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ state: 'RUNNING', activity: AppState.currentActivity.Activity, start_time: startTime, accumulated_seconds: AppState.accumulated_seconds })
+                    });
+                } catch(e) { showToast("Cloud Sync Failed", "error"); }
             }
         }
 
         async function handleCheckOut(event) { 
             if (AppState.timerState === 'READY') return;
             clearInterval(AppState.timerInterval); 
+            
             if (AppState.timerState === 'RUNNING') {
-                const start = parseInt(localStorage.getItem('routine_timer_start'));
-                if (start) AppState.accumulated_seconds += Math.floor((Date.now() - start) / 1000);
+                const savedStart = parseInt(localStorage.getItem('routine_timer_start'));
+                if (savedStart) {
+                    const elapsed = Math.floor((Date.now() - savedStart) / 1000);
+                    AppState.accumulated_seconds += elapsed;
+                }
             }
-            const worked = AppState.accumulated_seconds;
-            const actualHrs = worked / 3600;
-            const plannedHrs = parseFloat(AppState.currentActivity.Duration);
+
+            const workedSeconds = AppState.accumulated_seconds; // Use the absolute accumulated time
+            const actualDurationHrs = workedSeconds / 3600;
+            const plannedDurationHrs = parseFloat(AppState.currentActivity.Duration);
+            const timeDebt = Math.max(0, plannedDurationHrs - actualDurationHrs);
+
+            localStorage.removeItem('routine_timer_start');
+            localStorage.removeItem('routine_timer_activity');
+            localStorage.removeItem('routine_timer_accumulated');
+            AppState.accumulated_seconds = 0;
+
             event.target.innerText = "Saving...";
-            await fetch(`${BackendAPI}/log_session`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ activity: AppState.currentActivity.Activity, planned_duration: plannedHrs, actual_duration: actualHrs, time_debt: Math.max(0, plannedHrs - actualHrs) }) }); 
-            await fetch(`${BackendAPI}/set_state`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ state: 'READY', activity: null, start_time: null, accumulated_seconds: 0 }) });
-            localStorage.clear();
-            location.reload(); 
+
+            try {
+                await fetch(`${BackendAPI}/log_session`, { 
+                    method: 'POST', headers: {'Content-Type': 'application/json'}, 
+                    body: JSON.stringify({ activity: AppState.currentActivity.Activity, planned_duration: plannedDurationHrs, actual_duration: actualDurationHrs, time_debt: timeDebt }) 
+                }); 
+                
+                await fetch(`${BackendAPI}/set_state`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ state: 'READY', activity: null, start_time: null, accumulated_seconds: 0 })
+                });
+
+                location.reload(); 
+            } catch (e) {
+                showToast("Failed to save session", "error");
+                event.target.innerText = "Check-Out";
+            }
         }
 
-        function startTimerLoop() {
-            if(AppState.timerInterval) clearInterval(AppState.timerInterval);
-            AppState.timerInterval = setInterval(() => { 
-                const start = parseInt(localStorage.getItem('routine_timer_start'));
-                const acc = parseInt(localStorage.getItem('routine_timer_accumulated')) || 0;
-                if (start) AppState.timerSeconds = AppState.totalSeconds - (Math.floor((Date.now() - start) / 1000) + acc);
-                else if (acc > 0) AppState.timerSeconds = AppState.totalSeconds - acc;
-                if (AppState.timerSeconds < 0) AppState.timerSeconds = 0; 
-                updateTimerDisplay(); 
-            }, 1000);
+        function updateHeaderClock() {
+            const now = new Date();
+            document.getElementById('header-live-clock').innerText = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
         }
 
         function updateTimerDisplay() {
@@ -249,26 +360,38 @@
             document.getElementById('activity-progress').innerText = `${Math.max(0, (AppState.totalSeconds - AppState.timerSeconds)/3600).toFixed(2)}h`;
         }
 
-        function reloadLocalState() {
-            const start = localStorage.getItem('routine_timer_start');
-            const act = localStorage.getItem('routine_timer_activity');
-            const acc = localStorage.getItem('routine_timer_accumulated');
-            if (act === AppState.currentActivity.Activity) {
-                AppState.accumulated_seconds = parseInt(acc) || 0;
-                if (start) { AppState.timerState = 'RUNNING'; startTimerLoop(); document.getElementById('btn-pause').innerText = "PAUSE"; }
-                else if (AppState.accumulated_seconds > 0) { AppState.timerState = 'PAUSED'; document.getElementById('btn-pause').innerText = "RESUME"; updateTimerDisplay(); }
-            }
+        function startTimerLoop() {
+            if(AppState.timerInterval) clearInterval(AppState.timerInterval);
+            
+            AppState.timerInterval = setInterval(() => { 
+                const savedStart = parseInt(localStorage.getItem('routine_timer_start'));
+                const savedAcc = parseInt(localStorage.getItem('routine_timer_accumulated')) || 0;
+                
+                if (savedStart) {
+                    const elapsedRealTimeSeconds = Math.floor((Date.now() - savedStart) / 1000);
+                    AppState.timerSeconds = AppState.totalSeconds - (elapsedRealTimeSeconds + savedAcc);
+                } else if (savedAcc > 0) {
+                    AppState.timerSeconds = AppState.totalSeconds - savedAcc;
+                }
+                
+                if (AppState.timerSeconds < 0) AppState.timerSeconds = 0; 
+                updateTimerDisplay(); 
+            }, 1000);
         }
 
-        function updateHeaderClock() {
-            const now = new Date();
-            document.getElementById('header-live-clock').innerText = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+        async function fetchSchedule() {
+            try {
+                const res = await fetch(`${BackendAPI}/get_schedule`);
+                const result = await res.json();
+                if (result.status === "success") { AppState.allActivities = result.data; }
+            } catch(e) { console.error("Sync Error"); }
         }
-
+        
         function switchTab(view) {
             ['dashboard', 'insights', 'analytics'].forEach(s => { document.getElementById(`view-${s}`).classList.add('hidden'); document.getElementById(`nav-${s}`).classList.replace('tab-active', 'tab-inactive'); });
             document.getElementById(`view-${view}`).classList.remove('hidden');
             document.getElementById(`nav-${view}`).classList.replace('tab-inactive', 'tab-active');
+            if(view === 'analytics') fetchAnalytics();
         }
 
         function showToast(m, t) {
@@ -279,23 +402,105 @@
             setTimeout(() => toast.remove(), 4000);
         }
 
-        async function sendMessage() {
+        async function sendMessage(overrideText = null) {
             const input = document.getElementById('chat-input');
-            const msg = input.value.trim();
+            const msg = overrideText || input.value.trim();
             if(!msg) return;
             appendBubble('user', msg);
-            input.value = '';
-            const res = await fetch(`${BackendAPI}/chat`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ message: msg }) });
-            const result = await res.json();
-            if(result.status === "success") appendBubble('ai', result.text);
+            if(!overrideText) input.value = '';
+            const loadingId = "loading-" + Date.now();
+            appendBubble('ai', "Thinking...", loadingId);
+            try {
+                const res = await fetch(`${BackendAPI}/chat`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ message: msg }) });
+                document.getElementById(loadingId)?.remove();
+                const result = await res.json();
+                if(result.status === "success") {
+                    const aiText = result.text;
+                    localChatHistory.push({type: 'user', text: msg}, {type: 'ai', text: aiText});
+                    localStorage.setItem('routine_chat_cache', JSON.stringify(localChatHistory.slice(-20)));
+                    processAIResponse(aiText);
+                }
+            } catch(e) { document.getElementById(loadingId)?.remove(); showToast("Chat Offline", "error"); }
         }
-
-        function appendBubble(type, text) {
+        function appendBubble(type, text, id = null) {
             const win = document.getElementById('chat-window'), div = document.createElement('div');
-            div.className = type === 'ai' ? 'chat-bubble-ai p-5 max-w-[85%] text-sm self-start' : 'chat-bubble-user p-5 max-w-[85%] text-sm self-end ml-auto';
+            if(id) div.id = id;
+            div.className = type === 'ai' ? 'chat-bubble-ai p-5 max-w-[85%] text-sm leading-relaxed self-start animate-in fade-in slide-in-from-left-2' : 'chat-bubble-user p-5 max-w-[85%] text-sm leading-relaxed self-end ml-auto animate-in fade-in slide-in-from-right-2';
             div.innerHTML = text.replace(/\n/g, '<br>');
             win.appendChild(div);
             win.scrollTop = win.scrollHeight;
+        }
+        async function clearChatHistory() {
+            if(!confirm("Wipe all chat memory? This cannot be undone.")) return;
+            showToast("Wiping Memory...", "info");
+            try {
+                const res = await fetch(`${BackendAPI}/clear_chat`, { method: 'DELETE' });
+                if(res.ok) {
+                    localStorage.removeItem('routine_chat_cache');
+                    localChatHistory = [];
+                    document.getElementById('chat-window').innerHTML = '';
+                    appendBubble('ai', "Memory wiped. I am ready for a fresh start, Sriniket.");
+                    showToast("Memory Cleared", "success");
+                }
+            } catch(e) { showToast("Wipe Failed", "error"); }
+        }
+        function processAIResponse(rawText) {
+            let cleanText = rawText, actionData = null;
+            const actionMatch = rawText.match(/ACTION_RECS:\s*({[\s\S]*?})/);
+            if(actionMatch) {
+                try { actionData = JSON.parse(actionMatch[1]); cleanText = rawText.replace(actionMatch[0], '').trim(); } 
+                catch(e) { console.error("Failed to parse AI JSON block", e); }
+            }
+            appendBubble('ai', cleanText);
+            if(actionData) renderActionCard(actionData);
+        }
+        function renderActionCard(data) {
+            const win = document.getElementById('chat-window'), div = document.createElement('div');
+            div.className = "stat-card border-white/20 p-6 space-y-4 max-w-[85%] animate-in zoom-in-95 self-start ml-4 mt-2";
+            div.innerHTML = `<span class="text-[9px] font-black text-white/30 uppercase tracking-widest">Architect Suggestion</span><h5 class="text-sm font-bold text-white">${data.action_target} ➔ ${data.new_val}</h5><p class="text-[11px] text-white/50 italic">"${data.reason}"</p><div class="flex space-x-2"><button id="btn-apply" onclick="executeAdjustment(event, '${data.action_target}', '${data.new_val}')" class="flex-1 bg-white text-black py-3 rounded-xl font-black text-[10px] uppercase transition hover:bg-gray-200">Confirm</button><button onclick="this.parentElement.parentElement.remove()" class="px-5 py-3 border border-white/10 rounded-xl text-[10px] font-black uppercase text-white hover:bg-white/5 transition">Ignore</button></div>`;
+            win.appendChild(div);
+            win.scrollTop = win.scrollHeight;
+        }
+        async function executeAdjustment(e, activity, newVal) {
+            const btn = e.target;
+            btn.innerText = "Applying...";
+            btn.disabled = true;
+            const res = await fetch(`${BackendAPI}/update_timetable`, { method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ activity, new_val: newVal }) });
+            if(res.ok) {
+                sendMessage(`System: Confirmed adjustment for ${activity} to ${newVal}.`);
+                showToast("Schedule Adjusted", "success");
+                btn.parentElement.remove();
+            } else { btn.innerText = "Failed"; btn.classList.add("bg-debt", "text-white"); btn.disabled = false;}
+        }
+
+        async function fetchAnalytics() {
+            try {
+                const res = await fetch(`${BackendAPI}/get_analytics`);
+                const result = await res.json();
+                if (result.status === "success") { AppState.analyticsData = result; toggleRange('week'); }
+            } catch (e) { showToast("Analytics Offline", "error"); }
+        }
+
+        function toggleRange(range) {
+            const w = document.getElementById('btn-week'), o = document.getElementById('btn-overall');
+            const data = range === 'week' ? AppState.analyticsData.week : AppState.analyticsData.overall;
+            w.className = range === 'week' ? "px-4 py-2 text-[10px] font-black uppercase rounded-lg bg-white text-black transition-all" : "px-4 py-2 text-[10px] font-black uppercase text-white/30 transition-all";
+            o.className = range === 'overall' ? "px-4 py-2 text-[10px] font-black uppercase rounded-lg bg-white text-black transition-all" : "px-4 py-2 text-[10px] font-black uppercase text-white/30 transition-all";
+            if(!data) return;
+            document.getElementById('stat-study-hrs').innerText = data.study;
+            document.getElementById('stat-adherence').innerText = data.adherence + "%";
+            document.getElementById('stat-debt').innerText = data.debt;
+            document.getElementById('study-progress-bar').style.width = Math.min(100, (data.study / 10) * 100) + "%";
+            const offset = 339.29 - (339.29 * data.adherence) / 100;
+            document.getElementById('adherence-circle').style.strokeDashoffset = offset;
+            document.getElementById('circle-pct').innerText = data.adherence + "%";
+            const maxVal = Math.max(...data.chart, 1);
+            const bars = document.getElementById('chart-bars').children;
+            data.chart.forEach((val, i) => {
+                const height = Math.max(5, (val / maxVal) * 100);
+                bars[i].style.height = height + "%";
+                bars[i].className = val > 0 ? "bg-white w-full rounded-t-lg chart-bar" : "bg-white/10 w-full rounded-t-lg chart-bar";
+            });
         }
     </script>
 </body>
