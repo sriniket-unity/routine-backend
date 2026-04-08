@@ -162,7 +162,7 @@
             syncWithCloud();
 
             if(localChatHistory.length === 0) {
-                appendBubble('ai', "System: Memory Loaded. Architect Engine V5.9.5 (Ripple Math + Revert UI) online.");
+                appendBubble('ai', "System: Memory Loaded. Architect Engine V5.9.7 (Ripple Math + Deep Revert UI) online.");
             } else {
                 localChatHistory.forEach(m => {
                     if (m.type === 'ai') processAIResponse(m.text);
@@ -452,13 +452,20 @@
             } catch(e) { showToast("Wipe Failed", "error"); }
         }
 
-        // V5.9.5 ARRAY PARSER (WITH APPLIED STATE CHECK)
+        // V5.9.7 ARRAY PARSER (WITH 3-STATE CACHE LOGIC)
         function processAIResponse(rawText) {
             let cleanText = rawText;
-            
-            // Check if it's a new proposal or an already applied one from history
-            const isApplied = cleanText.includes('APPLIED_RECS:');
-            const targetRegex = isApplied ? /APPLIED_RECS:\s*(\[[\s\S]*?\])/g : /ACTION_RECS:\s*(\[[\s\S]*?\])/g;
+            let status = 'pending';
+            let targetRegex = /ACTION_RECS:\s*(\[[\s\S]*?\])/g;
+
+            // Check what state this block is in by reading the text tag
+            if (cleanText.includes('APPLIED_RECS:')) {
+                status = 'applied';
+                targetRegex = /APPLIED_RECS:\s*(\[[\s\S]*?\])/g;
+            } else if (cleanText.includes('REVERTED_RECS:')) {
+                status = 'reverted';
+                targetRegex = /REVERTED_RECS:\s*(\[[\s\S]*?\])/g;
+            }
             
             let match = targetRegex.exec(rawText);
             let actions = [];
@@ -473,12 +480,12 @@
             appendBubble('ai', cleanText.trim());
             
             if(actions.length > 0) {
-                renderRippleCard(actions, isApplied);
+                renderRippleCard(actions, status);
             }
         }
 
-        // V5.9.5 RIPPLE UI CARD
-        function renderRippleCard(actions, isApplied = false) {
+        // V5.9.7 RIPPLE UI CARD
+        function renderRippleCard(actions, status = 'pending') {
             const win = document.getElementById('chat-window');
             const cardId = 'card-' + Date.now() + Math.floor(Math.random() * 1000);
             const div = document.createElement('div');
@@ -495,8 +502,15 @@
             const safeActions = encodeURIComponent(JSON.stringify(actions)).replace(/'/g, "%27");
 
             let buttonsHtml = '';
-            if (isApplied) {
-                buttonsHtml = `<button disabled class="flex-1 bg-white/10 text-white/50 py-3 rounded-xl font-black text-[10px] uppercase cursor-default">Applied Successfully ✅</button>`;
+            
+            // Render correct buttons based on cached state
+            if (status === 'applied') {
+                buttonsHtml = `
+                    <button disabled class="flex-1 bg-white/10 text-white/50 py-3 rounded-xl font-black text-[10px] uppercase cursor-default">Applied Successfully ✅</button>
+                    <button onclick="revertRippleAdjustment('${cardId}')" class="px-5 border border-debt/30 text-debt py-3 rounded-xl font-black text-[10px] uppercase hover:bg-debt/10 transition">Revert</button>
+                `;
+            } else if (status === 'reverted') {
+                buttonsHtml = `<button disabled class="flex-1 bg-white/10 text-white/50 py-3 rounded-xl font-black text-[10px] uppercase cursor-default">Reverted ⏪</button>`;
             } else {
                 buttonsHtml = `
                     <button onclick="executeRippleAdjustment('${cardId}', '${safeActions}')" class="flex-1 bg-white text-black py-3 rounded-xl font-black text-[10px] uppercase transition hover:bg-gray-200">Approve & Apply</button>
@@ -520,7 +534,7 @@
             win.scrollTop = win.scrollHeight;
         }
 
-        // V5.9.5 ARRAY PAYLOAD EXECUTION & REVERT
+        // V5.9.7 ARRAY PAYLOAD EXECUTION & REVERT
         async function executeRippleAdjustment(cardId, safeActions) {
             const controls = document.getElementById(`controls-${cardId}`);
             controls.innerHTML = `<button disabled class="flex-1 bg-sage text-black py-3 rounded-xl font-black text-[10px] uppercase opacity-50 cursor-not-allowed">Recalculating Times...</button>`;
@@ -535,7 +549,6 @@
                 
                 if(res.ok) {
                     showToast("Schedule Restructured", "success");
-                    // Show Applied and Revert button
                     controls.innerHTML = `
                         <button disabled class="flex-1 bg-white/10 text-white/50 py-3 rounded-xl font-black text-[10px] uppercase cursor-default">Applied Successfully ✅</button>
                         <button onclick="revertRippleAdjustment('${cardId}')" class="px-5 border border-debt/30 text-debt py-3 rounded-xl font-black text-[10px] uppercase hover:bg-debt/10 transition">Revert</button>
@@ -544,10 +557,12 @@
 
                     // Lock the state in localStorage so it doesn't reappear on refresh!
                     if (localChatHistory.length > 0) {
-                        let lastMsg = localChatHistory[localChatHistory.length - 1];
-                        if (lastMsg.type === 'ai') {
-                            lastMsg.text = lastMsg.text.replace('ACTION_RECS:', 'APPLIED_RECS:');
-                            localStorage.setItem('routine_chat_cache', JSON.stringify(localChatHistory.slice(-20)));
+                        for (let i = localChatHistory.length - 1; i >= 0; i--) {
+                            if (localChatHistory[i].type === 'ai' && localChatHistory[i].text.includes('ACTION_RECS:')) {
+                                localChatHistory[i].text = localChatHistory[i].text.replace('ACTION_RECS:', 'APPLIED_RECS:');
+                                localStorage.setItem('routine_chat_cache', JSON.stringify(localChatHistory.slice(-20)));
+                                break;
+                            }
                         }
                     }
                 } else { 
@@ -568,6 +583,17 @@
                     showToast("Schedule Reverted", "success");
                     controls.innerHTML = `<button disabled class="flex-1 bg-white/10 text-white/50 py-3 rounded-xl font-black text-[10px] uppercase cursor-default">Reverted ⏪</button>`;
                     fetchSchedule();
+
+                    // Lock the REVERTED state in localStorage so it persists on refresh!
+                    if (localChatHistory.length > 0) {
+                        for (let i = localChatHistory.length - 1; i >= 0; i--) {
+                            if (localChatHistory[i].type === 'ai' && localChatHistory[i].text.includes('APPLIED_RECS:')) {
+                                localChatHistory[i].text = localChatHistory[i].text.replace('APPLIED_RECS:', 'REVERTED_RECS:');
+                                localStorage.setItem('routine_chat_cache', JSON.stringify(localChatHistory.slice(-20)));
+                                break;
+                            }
+                        }
+                    }
                 } else {
                     controls.innerHTML = `<button disabled class="flex-1 bg-debt text-white py-3 rounded-xl font-black text-[10px] uppercase">Revert Failed</button>`;
                 }
