@@ -1,4 +1,4 @@
-# start of version v5.9.6 (Revert via Google Sheets)
+# start of version v6.0.0 (Phase 3: Dynamic Debt Analytics)
 from dotenv import load_dotenv
 load_dotenv()
 from flask import Flask, request, jsonify, Response, stream_with_context
@@ -25,7 +25,7 @@ genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 timetable_ws = None
 logs_ws = None
 chat_logs_ws = None 
-snapshot_ws = None # NEW
+snapshot_ws = None 
 
 def init_sheets():
     global timetable_ws, logs_ws, chat_logs_ws, snapshot_ws
@@ -37,7 +37,6 @@ def init_sheets():
             timetable_ws = sheet.worksheet("Timetable")
             logs_ws = sheet.worksheet("Logs")
             chat_logs_ws = sheet.worksheet("ChatLogs")
-            # NEW: Connect to Snapshot tab
             try:
                 snapshot_ws = sheet.worksheet("Snapshot")
             except gspread.exceptions.WorksheetNotFound:
@@ -93,7 +92,7 @@ cloud_state = {
 # --- 🌐 ENDPOINTS ---
 @app.route('/', methods=['GET'])
 def health():
-    return jsonify({"service": "Routine Flow Architect", "version": "5.9.6", "status": "Online"}), 200
+    return jsonify({"service": "Routine Flow Architect", "version": "6.0.0", "status": "Online"}), 200
 
 @app.route('/get_state', methods=['GET'])
 def get_state(): 
@@ -236,14 +235,12 @@ def update_timetable():
             
         original_length = len(current_schedule)
         
-        # --- SAVE SNAPSHOT TO GOOGLE SHEETS ---
         if snapshot_ws:
              snapshot_ws.clear()
              snapshot_data = [[row.get('Time', ''), row.get('Activity', ''), row.get('Duration', '')] for row in current_schedule]
              if snapshot_data:
                  snapshot_ws.append_rows(snapshot_data)
 
-        # 2. Execute AI Commands
         for cmd in data:
             if cmd.get('action') == 'delete':
                 current_schedule = [row for row in current_schedule if not re.match(rf'^{re.escape(cmd.get("target"))}$', row.get('Activity', ''), re.IGNORECASE)]
@@ -266,7 +263,6 @@ def update_timetable():
                          row['Duration'] = cmd.get("new_val").replace('h', '')
                          break
 
-        # 3. THE RIPPLE EFFECT
         def format_12hr(mins):
             h = (mins // 60) % 24
             m = mins % 60
@@ -305,9 +301,7 @@ def revert_timetable():
         if not snapshot_ws:
              return jsonify({"status": "error", "message": "Snapshot worksheet missing."}), 500
 
-        # Retrieve snapshot from Google Sheets
         snapshot_data = snapshot_ws.get_all_values()
-        
         if not snapshot_data:
             return jsonify({"status": "error", "message": "No snapshot data found."}), 400
             
@@ -317,7 +311,6 @@ def revert_timetable():
         if snapshot_data:
             timetable_ws.update(f'B3:D{2 + len(snapshot_data)}', snapshot_data)
 
-        # Clear snapshot after reverting
         snapshot_ws.clear()
         return jsonify({"status": "success", "message": "Reverted successfully."}), 200
     except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
@@ -359,6 +352,7 @@ def clear_logs():
         return jsonify({"status": "success"}), 200
     except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
 
+# --- V6.0.0 DYNAMIC ANALYTICS UPGRADE ---
 @app.route('/get_analytics', methods=['GET'])
 def get_analytics():
     try:
@@ -366,30 +360,59 @@ def get_analytics():
         if not logs_ws: return jsonify({"status": "error"}), 500
         raw_logs = logs_ws.get_all_values()
         if len(raw_logs) <= 1: return jsonify({"status": "success", "overall": None, "week": None}), 200
+        
         headers = [h.strip() for h in raw_logs[0] if h.strip()]
         all_logs = [dict(zip(headers, r)) for r in raw_logs[1:] if any(r)]
         now = datetime.now(IST)
         start_of_week = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0)
 
         def process_subset(subset):
-            if not subset: return {"study": 0, "adherence": 0, "debt": 0, "chart": [0.0]*7}
+            if not subset: return {"study": 0, "adherence": 0, "total_debt": 0, "debts_by_activity": {}, "chart": [0.0]*7}
             keys = list(subset[0].keys()) if subset else []
             act_k = next((k for k in keys if 'actual' in k.lower()), None)
             debt_k = next((k for k in keys if 'debt' in k.lower()), None)
             ts_k = next((k for k in keys if 'time' in k.lower() or 'stamp' in k.lower()), None)
+            name_k = next((k for k in keys if 'activity' in k.lower() or 'name' in k.lower()), keys[1] if len(keys)>1 else 'Activity')
+            
             valid_rows = [r for r in subset if str(r.get(act_k, '')).strip() or str(r.get(debt_k, '')).strip()]
-            if not valid_rows: return {"study": 0, "adherence": 0, "debt": 0, "chart": [0.0]*7}
-            total_study = sum(safe_float(r.get(act_k)) for r in valid_rows)
-            total_debt = sum(safe_float(r.get(debt_k)) for r in valid_rows)
+            if not valid_rows: return {"study": 0, "adherence": 0, "total_debt": 0, "debts_by_activity": {}, "chart": [0.0]*7}
+            
+            total_study = 0
+            total_debt = 0
+            debts_by_activity = {}
+            
+            for r in valid_rows:
+                act_name = str(r.get(name_k, 'Unknown')).strip()
+                # Dynamically group "Study Session 1" into just "Study"
+                if "study" in act_name.lower(): act_name = "Study"
+                
+                actual_val = safe_float(r.get(act_k))
+                debt_val = safe_float(r.get(debt_k))
+                
+                if act_name == "Study": total_study += actual_val
+                total_debt += debt_val
+                
+                if debt_val > 0:
+                    debts_by_activity[act_name] = round(debts_by_activity.get(act_name, 0) + debt_val, 1)
+                    
             completed = sum(1 for r in valid_rows if safe_float(r.get(act_k)) > 0)
             adherence = round((completed / len(valid_rows)) * 100)
+            
             chart = [0.0] * 7
             for r in valid_rows:
                 try:
                     dt = datetime.strptime(sanitize_ts(r.get(ts_k, '')), '%Y-%m-%d %H:%M')
-                    chart[dt.weekday()] += safe_float(r.get(act_k))
+                    if "study" in str(r.get(name_k, '')).lower():
+                        chart[dt.weekday()] += safe_float(r.get(act_k))
                 except: continue
-            return {"study": round(total_study, 1), "adherence": adherence, "debt": round(total_debt, 1), "chart": chart}
+                
+            return {
+                "study": round(total_study, 1), 
+                "adherence": adherence, 
+                "total_debt": round(total_debt, 1), 
+                "debts_by_activity": debts_by_activity, 
+                "chart": chart
+            }
 
         week_logs = []
         ts_key = next((k for k in all_logs[0].keys() if 'time' in k.lower() or 'stamp' in k.lower()), None)
@@ -398,6 +421,7 @@ def get_analytics():
                 if IST.localize(datetime.strptime(sanitize_ts(r.get(ts_key, '')), '%Y-%m-%d %H:%M')) >= start_of_week:
                     week_logs.append(r)
             except: continue
+            
         return jsonify({
             "status": "success", 
             "overall": process_subset(all_logs), 
@@ -407,4 +431,4 @@ def get_analytics():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
-# end of version v5.9.6
+# end of version v6.0.0
