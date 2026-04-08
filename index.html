@@ -200,7 +200,7 @@
             syncWithCloud();
 
             if(localChatHistory.length === 0) {
-                appendBubble('ai', "System: Memory Loaded. Architect Engine V6.2.2 (UI Nav Layout) online.");
+                appendBubble('ai', "System: Memory Loaded. Architect Engine V6.2.3 (Chronological Priority Sorting) online.");
             } else {
                 localChatHistory.forEach(m => {
                     if (m.type === 'ai') processAIResponse(m.text);
@@ -480,7 +480,7 @@
             } catch (e) { showToast("Error Reverting", "error"); }
         }
 
-        // --- V6.2.2 PRIORITY MATRIX UI LOGIC ---
+        // --- V6.2.3 CHRONOLOGICAL PRIORITY SORTING LOGIC ---
         async function openPriorityModal() {
             document.getElementById('priority-modal').classList.remove('hidden');
             const container = document.getElementById('priority-sliders');
@@ -512,8 +512,31 @@
                 container.innerHTML = '<div class="text-center text-white/50 text-xs py-8">No activities found in schedule.</div>';
                 return;
             }
+
+            // 1. Extract ordered unique names from the actual chronological schedule
+            const orderedNames = [];
+            if (AppState.allActivities && AppState.allActivities.length > 0) {
+                AppState.allActivities.forEach(item => {
+                    let actName = item.Activity ? item.Activity.trim() : '';
+                    if (actName) {
+                        if (actName.toLowerCase().includes('study')) actName = 'Study';
+                        if (!orderedNames.includes(actName) && AppState.priorities[actName] !== undefined) {
+                            orderedNames.push(actName);
+                        }
+                    }
+                });
+            }
             
-            for(const [activity, score] of Object.entries(AppState.priorities)) {
+            // 2. Fallback: catch any priorities that weren't caught in the loop above
+            for (const act of Object.keys(AppState.priorities)) {
+                if (!orderedNames.includes(act)) {
+                    orderedNames.push(act);
+                }
+            }
+
+            // 3. Render sliders in chronological order
+            orderedNames.forEach(activity => {
+                const score = AppState.priorities[activity];
                 let colorClass, labelClass, labelText;
                 
                 if (score >= 8) {
@@ -544,7 +567,7 @@
                                oninput="updateSliderUI('${activity}', this.value)">
                     </div>
                 `;
-            }
+            });
         }
 
         function updateSliderUI(activity, value) {
