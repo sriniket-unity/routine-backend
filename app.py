@@ -1,4 +1,4 @@
-# start of version v5.8.7 (with Prompt Patch)
+# start of version v5.9.0 (Ripple Effect Engine)
 from dotenv import load_dotenv
 load_dotenv()
 from flask import Flask, request, jsonify, Response, stream_with_context
@@ -86,7 +86,7 @@ cloud_state = {
 def health():
     return jsonify({
         "service": "Routine Flow Architect", 
-        "version": "5.8.7", 
+        "version": "5.9.0", 
         "status": "Online",
         "model": "gemini-3-flash-preview"
     }), 200
@@ -206,6 +206,7 @@ def chat():
             chat_headers = [h.strip() for h in all_chat[0] if h.strip()]
             memory = [dict(zip(chat_headers, r)) for r in all_chat[1:] if any(r)][-6:]
             
+        # V5.9.0 PROMPT UPGRADE: Arrays of Commands
         prompt = f"""
         System: You are 'Routine Flow Architect', an AI assistant for Sriniket.
         Context: Sriniket is recovering from a bike accident.
@@ -213,18 +214,25 @@ def chat():
         Memory: {json.dumps(memory)}
         
         CRITICAL INSTRUCTIONS: 
-        1. If the user asks a direct/simple question, answer it DIRECTLY and CONCISELY. Do NOT add unsolicited advice.
-        2. ONLY provide schedule recommendations if the user explicitly asks for advice, schedule changes, or discusses health/routine.
-        3. STRICT JSON RULE: The `new_val` MUST ALWAYS be a precise number followed by 'h' (e.g., "0.5h", "1.0h", "0.0h"). NEVER output words like "undefined", "extended", or "none". If an activity is cancelled, use "0.0h".
+        1. If the user asks a simple question, answer it DIRECTLY. Do NOT add unsolicited advice.
+        2. ONLY provide schedule recommendations if explicitly asked.
+        3. STRICT JSON RULE: You must output schedule changes as a JSON ARRAY of command objects. 
+        
+        Valid Actions:
+        - "modify": Changes duration of an existing activity. (Requires "target", "new_val", "reason")
+        - "delete": Removes an activity entirely. (Requires "target", "reason")
+        - "insert": Adds a brand new activity at the current time. (Requires "activity", "duration", "reason")
+        
+        DURATION RULE: ALL durations MUST be a float followed by 'h' (e.g., "0.5h", "2.0h"). 
         
         User Input: {user_msg}
         
-        Mandatory Change Format (Use ONLY if making schedule changes):
-        ACTION_RECS: {{"action_target": "Activity Name", "new_val": "0.5h", "reason": "Rest and recovery"}}
+        Mandatory Change Format (Use ONLY if making schedule changes. Must be valid JSON array):
+        ACTION_RECS: [{{"action": "delete", "target": "Study Session 4", "reason": "Emergency"}}, {{"action": "insert", "activity": "Doctor", "duration": "2.0h", "reason": "Checkup"}}]
         """
         model = genai.GenerativeModel('gemini-3-flash-preview')
         
-        # V5.8.7: Streaming Generator Function
+        # Streaming Generator Function
         def generate():
             full_text = ""
             try:
@@ -232,10 +240,8 @@ def chat():
                 for chunk in response:
                     if chunk.text:
                         full_text += chunk.text
-                        # Yield Server-Sent Events (SSE)
                         yield f"data: {json.dumps({'text': chunk.text})}\n\n"
                 
-                # Save to Google Sheets on a background thread AFTER stream finishes
                 ts = datetime.now(IST).strftime('%Y-%m-%d %H:%M')
                 threading.Thread(target=save_chat_bg, args=(ts, user_msg, full_text)).start()
                 
@@ -247,6 +253,77 @@ def chat():
         return Response(stream_with_context(generate()), mimetype='text/event-stream')
 
     except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
+
+# --- PHASE 2: THE RIPPLE EFFECT ENGINE ---
+@app.route('/update_timetable', methods=['PATCH'])
+def update_timetable():
+    try:
+        data = request.json
+        # 'data' will now be a list of commands: [{"action": "delete", "target": "Study"}, {"action": "insert", "activity": "Doctor", "duration": "2.0h"}]
+        
+        all_val = timetable_ws.get_all_values()
+        headers = [h.strip() for h in all_val[1] if h.strip()]
+        current_schedule = [dict(zip(headers, r)) for r in all_val[2:] if any(r)]
+        
+        # 1. Execute AI Commands (Delete/Insert/Modify)
+        for cmd in data:
+            if cmd.get('action') == 'delete':
+                current_schedule = [row for row in current_schedule if not re.match(rf'^{re.escape(cmd.get("target"))}$', row.get('Activity', ''), re.IGNORECASE)]
+            
+            elif cmd.get('action') == 'insert':
+                now = datetime.now(IST)
+                curMin = (now.hour * 60) + now.minute
+                insert_idx = 0
+                
+                for idx, item in enumerate(current_schedule):
+                    times = item.get('Time', '').split('-')
+                    if len(times) == 2:
+                        s = parse_time_to_minutes(times[0])
+                        if s > curMin:
+                            insert_idx = idx
+                            break
+                            
+                new_block = {"Time": "TBD", "Activity": cmd.get("activity"), "Duration": cmd.get("duration").replace('h', '')}
+                current_schedule.insert(insert_idx, new_block)
+                
+            elif cmd.get('action') == 'modify':
+                 for row in current_schedule:
+                     if re.match(rf'^{re.escape(cmd.get("target"))}$', row.get('Activity', ''), re.IGNORECASE):
+                         row['Duration'] = cmd.get("new_val").replace('h', '')
+                         break
+
+        # 2. THE RIPPLE EFFECT: Recalculate all Start/End times
+        if current_schedule:
+            # Anchor to the first activity's start time to prevent the whole day from shifting
+            first_time = current_schedule[0].get('Time', '').split('-')[0].strip()
+            current_minutes = parse_time_to_minutes(first_time)
+            
+            for row in current_schedule:
+                start_str = f"{current_minutes // 60:02d}:{current_minutes % 60:02d}"
+                duration_mins = int(safe_float(row.get('Duration', 1.0)) * 60)
+                current_minutes += duration_mins
+                
+                if current_minutes >= 1440:
+                    current_minutes -= 1440
+                    
+                end_str = f"{current_minutes // 60:02d}:{current_minutes % 60:02d}"
+                row['Time'] = f"{start_str}-{end_str}"
+
+        # 3. Save back to Google Sheets
+        timetable_ws.delete_rows(3, len(all_val)) 
+        
+        rows_to_insert = []
+        for row in current_schedule:
+             rows_to_insert.append([row.get('Time', ''), row.get('Activity', ''), row.get('Duration', '')])
+             
+        if rows_to_insert:
+            timetable_ws.append_rows(rows_to_insert)
+
+        return jsonify({"status": "success", "message": "Ripple effect applied."}), 200
+        
+    except Exception as e: 
+        app.logger.error(traceback.format_exc())
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/log_session', methods=['POST'])
 def log_session():
@@ -287,19 +364,6 @@ def clear_logs():
         app.logger.error(traceback.format_exc())
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/update_timetable', methods=['PATCH'])
-def update_timetable():
-    try:
-        data = request.json
-        pattern = re.compile(rf'^{re.escape(data.get("activity"))}$', re.IGNORECASE)
-        cell = timetable_ws.find(pattern)
-        if cell:
-            timetable_ws.update_cell(cell.row, cell.col + 1, data.get('new_val'))
-            return jsonify({"status": "success"}), 200
-        return jsonify({"status": "error"}), 404
-    except Exception as e: return jsonify({"status": "error"}), 500
-
 if __name__ == '__main__':
-    # When deployed to Render, Gunicorn will bypass this. This is just for local testing.
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
-# end of version v5.8.7
+# end of version v5.9.0
