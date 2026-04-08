@@ -162,14 +162,11 @@
             syncWithCloud();
 
             if(localChatHistory.length === 0) {
-                appendBubble('ai', "System: Memory Loaded. Architect Engine V5.8.6 online.");
+                appendBubble('ai', "System: Memory Loaded. Architect Engine V5.8.7 (Streaming) online.");
             } else {
                 localChatHistory.forEach(m => {
-                    if (m.type === 'ai') {
-                        processAIResponse(m.text);
-                    } else {
-                        appendBubble(m.type, m.text);
-                    }
+                    if (m.type === 'ai') processAIResponse(m.text);
+                    else appendBubble(m.type, m.text);
                 });
             }
         });
@@ -352,6 +349,7 @@
             } catch(e) { event.target.innerText = "Check-Out"; }
         }
 
+        // V5.8.7: The entirely new Streaming UI function
         async function sendMessage(overrideText = null) {
             const input = document.getElementById('chat-input');
             const msg = overrideText || input.value.trim();
@@ -360,22 +358,69 @@
             appendBubble('user', msg);
             if(!overrideText) input.value = '';
 
-            const loadingId = "loading-" + Date.now();
+            const bubbleId = "ai-msg-" + Date.now();
             const thinkingHTML = `<div class="flex space-x-1 items-center h-5"><div class="w-1.5 h-1.5 bg-white/50 rounded-full typing-dot"></div><div class="w-1.5 h-1.5 bg-white/50 rounded-full typing-dot"></div><div class="w-1.5 h-1.5 bg-white/50 rounded-full typing-dot"></div></div>`;
-            appendBubble('ai', thinkingHTML, loadingId);
+            appendBubble('ai', thinkingHTML, bubbleId);
 
             try {
-                const res = await fetch(`${BackendAPI}/chat`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ message: msg }) });
-                document.getElementById(loadingId)?.remove();
+                const res = await fetch(`${BackendAPI}/chat`, { 
+                    method: 'POST', 
+                    headers: {'Content-Type': 'application/json'}, 
+                    body: JSON.stringify({ message: msg }) 
+                });
+                
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder("utf-8");
+                let rawText = "";
+                let isFirstChunk = true;
+                const bubbleElement = document.getElementById(bubbleId);
 
-                const result = await res.json();
-                if(result.status === "success") {
-                    const aiText = result.text;
-                    localChatHistory.push({type: 'user', text: msg}, {type: 'ai', text: aiText});
-                    localStorage.setItem('routine_chat_cache', JSON.stringify(localChatHistory.slice(-20)));
-                    processAIResponse(aiText);
+                // Reading the Server-Sent Events stream live
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    const chunk = decoder.decode(value, { stream: true });
+                    const lines = chunk.split('\n\n');
+                    
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const dataStr = line.replace('data: ', '').trim();
+                            if (dataStr === '[DONE]') break;
+                            
+                            try {
+                                const parsed = JSON.parse(dataStr);
+                                if (parsed.error) throw new Error(parsed.error);
+                                
+                                if (isFirstChunk) {
+                                    bubbleElement.innerHTML = ''; 
+                                    isFirstChunk = false;
+                                }
+                                
+                                rawText += parsed.text;
+                                // Display text live (including the raw JSON, which looks like hacker code)
+                                let displayHtml = rawText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+                                bubbleElement.innerHTML = displayHtml;
+                                
+                                const win = document.getElementById('chat-window');
+                                win.scrollTop = win.scrollHeight;
+                            } catch (e) { console.error("Parse error:", e, dataStr); }
+                        }
+                    }
                 }
-            } catch(e) { document.getElementById(loadingId)?.remove(); showToast("Chat Offline", "error"); }
+                
+                // Stream is completely finished. Save memory and transform the UI.
+                localChatHistory.push({type: 'user', text: msg}, {type: 'ai', text: rawText});
+                localStorage.setItem('routine_chat_cache', JSON.stringify(localChatHistory.slice(-20)));
+                
+                // Delete the raw streaming bubble and replace it with the clean text + Morphing Action Cards
+                bubbleElement.remove(); 
+                processAIResponse(rawText);
+
+            } catch(e) { 
+                document.getElementById(bubbleId).innerHTML = "Chat Offline.";
+                showToast("Chat Offline", "error"); 
+            }
         }
 
         function appendBubble(type, text, id = null) {
@@ -410,6 +455,7 @@
             } catch(e) { showToast("Wipe Failed", "error"); }
         }
 
+        // V5.8.7: This acts as our smart parser after the stream finishes
         function processAIResponse(rawText) {
             let cleanText = rawText;
             const actionRegex = /ACTION_RECS:\s*({[\s\S]*?})/g;

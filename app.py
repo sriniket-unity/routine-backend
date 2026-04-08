@@ -1,7 +1,7 @@
-# start of version v5.8.6
+# start of version v5.8.7
 from dotenv import load_dotenv
 load_dotenv()
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response, stream_with_context
 from flask_cors import CORS
 import gspread
 from datetime import datetime, timedelta
@@ -86,7 +86,7 @@ cloud_state = {
 def health():
     return jsonify({
         "service": "Routine Flow Architect", 
-        "version": "5.8.6", 
+        "version": "5.8.7", 
         "status": "Online",
         "model": "gemini-3-flash-preview"
     }), 200
@@ -222,12 +222,29 @@ def chat():
         ACTION_RECS: {{"action_target": "Activity Name", "new_val": "0.5h", "reason": "Rest and recovery"}}
         """
         model = genai.GenerativeModel('gemini-3-flash-preview')
-        response = model.generate_content(prompt)
         
-        ts = datetime.now(IST).strftime('%Y-%m-%d %H:%M')
-        threading.Thread(target=save_chat_bg, args=(ts, user_msg, response.text)).start()
-        
-        return jsonify({"status": "success", "text": response.text}), 200
+        # V5.8.7: Streaming Generator Function
+        def generate():
+            full_text = ""
+            try:
+                response = model.generate_content(prompt, stream=True)
+                for chunk in response:
+                    if chunk.text:
+                        full_text += chunk.text
+                        # Yield Server-Sent Events (SSE)
+                        yield f"data: {json.dumps({'text': chunk.text})}\n\n"
+                
+                # Save to Google Sheets on a background thread AFTER stream finishes
+                ts = datetime.now(IST).strftime('%Y-%m-%d %H:%M')
+                threading.Thread(target=save_chat_bg, args=(ts, user_msg, full_text)).start()
+                
+                yield "data: [DONE]\n\n"
+            except Exception as e:
+                app.logger.error(f"Stream error: {str(e)}")
+                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+        return Response(stream_with_context(generate()), mimetype='text/event-stream')
+
     except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/log_session', methods=['POST'])
@@ -282,5 +299,6 @@ def update_timetable():
     except Exception as e: return jsonify({"status": "error"}), 500
 
 if __name__ == '__main__':
+    # When deployed to Render, Gunicorn will bypass this. This is just for local testing.
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
-# end of version v5.8.6
+# end of version v5.8.7
