@@ -55,8 +55,8 @@
             </div>
             <nav class="flex space-x-4 md:space-x-6 font-black text-[10px] tracking-widest md:tracking-[0.3em] items-center">
                 <button id="nav-dashboard" onclick="switchTab('dashboard')" class="pb-1 tab-active uppercase transition">DASHBOARD</button>
-                <button onclick="openPriorityModal()" class="pb-1 text-yellow-400/80 hover:text-yellow-400 border-b-2 border-transparent uppercase transition flex items-center gap-1">
-                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                <button id="nav-priority" onclick="switchTab('priority')" class="pb-1 tab-inactive uppercase transition flex items-center gap-1">
+                    <svg class="w-3 h-3 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                     PRIORITY
                 </button>
                 <button id="nav-insights" onclick="switchTab('insights')" class="pb-1 tab-inactive uppercase transition">ARCHITECT</button>
@@ -66,6 +66,7 @@
     </header>
 
     <main class="pt-28 md:pt-24 max-w-7xl mx-auto min-h-screen">
+        
         <section id="view-dashboard" class="p-6 flex flex-col items-center space-y-12">
             <div class="w-full grid grid-cols-1 md:grid-cols-3 gap-8 items-center text-center text-[12px] uppercase font-black">
                 <div id="prev-activity" class="text-white/70">---</div>
@@ -78,6 +79,34 @@
                     <button onclick="handleCheckIn()" class="w-full md:flex-1 bg-white text-black py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest active:scale-95 transition-transform">Check-In</button>
                     <button id="btn-pause" onclick="handlePauseResume()" class="w-full md:flex-1 border border-yellow-400/30 text-yellow-400 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-white/5 active:scale-95 transition-transform">Pause</button>
                     <button onclick="handleCheckOut(event)" class="w-full md:flex-1 border border-white/10 text-white/40 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-white/5 active:scale-95 transition-transform">Check-Out</button>
+                </div>
+            </div>
+        </section>
+
+        <section id="view-priority" class="hidden p-6 max-w-4xl mx-auto">
+            <div class="glass-panel border border-white/10 rounded-3xl p-8 mb-8 shadow-2xl">
+                <div class="mb-8">
+                    <h2 class="text-2xl font-black uppercase tracking-widest text-white mb-4 flex items-center gap-3">
+                        <svg class="w-6 h-6 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                        Priority Matrix
+                    </h2>
+                    <div class="text-[11px] text-white/50 leading-relaxed font-bold bg-white/5 p-4 rounded-xl border border-white/5 space-y-2">
+                        <div class="text-white/80 mb-2 uppercase tracking-widest">Architect Sacrifice Math Legend:</div>
+                        <div class="flex items-center gap-4">
+                            <div class="flex-1"><span class="text-debt font-black bg-debt/10 px-2 py-1 rounded">0-3</span> Expendable (Deleted to make room)</div>
+                            <div class="flex-1"><span class="text-yellow-400 font-black bg-yellow-400/10 px-2 py-1 rounded">4-7</span> Flexible (Shrunk to absorb impact)</div>
+                            <div class="flex-1"><span class="text-green-400 font-black bg-green-400/10 px-2 py-1 rounded">8-10</span> Vital (Protected & never altered)</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="priority-sliders" class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                    </div>
+
+                <div class="flex justify-end pt-4 border-t border-white/10">
+                    <button onclick="savePriorities(event)" class="px-10 bg-white text-black py-4 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-gray-200 active:scale-95 transition-all shadow-[0_0_20px_rgba(255,255,255,0.2)]">
+                        Save & Sync Matrix
+                    </button>
                 </div>
             </div>
         </section>
@@ -158,34 +187,6 @@
         </section>
     </main>
 
-    <div id="priority-modal" class="hidden fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 transition-opacity">
-        <div class="glass-panel border border-white/10 rounded-3xl p-8 w-full max-w-md space-y-6 relative shadow-2xl">
-            <button onclick="closePriorityModal()" class="absolute top-5 right-5 text-white/30 hover:text-white transition">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-            </button>
-            
-            <div>
-                <h2 class="text-xl font-black uppercase tracking-widest text-white mb-3 flex items-center gap-2">
-                    <svg class="w-5 h-5 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-                    Priority Matrix
-                </h2>
-                <div class="text-[10px] text-white/50 leading-relaxed font-bold bg-white/5 p-3 rounded-xl border border-white/5 space-y-1">
-                    <div class="text-white/80 mb-1">TEACH THE ARCHITECT SACRIFICE MATH:</div>
-                    <div><span class="text-debt w-16 inline-block">0-3</span> Expendable (Deleted to make room)</div>
-                    <div><span class="text-yellow-400 w-16 inline-block">4-7</span> Flexible (Shrunk to absorb impact)</div>
-                    <div><span class="text-green-400 w-16 inline-block">8-10</span> Vital (Protected & never altered)</div>
-                </div>
-            </div>
-
-            <div id="priority-sliders" class="space-y-6 max-h-[50vh] overflow-y-auto pr-2 pb-2">
-                </div>
-
-            <button onclick="savePriorities(event)" class="w-full bg-white text-black py-4 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-gray-200 active:scale-95 transition-all shadow-[0_0_20px_rgba(255,255,255,0.2)]">
-                Save & Sync Matrix
-            </button>
-        </div>
-    </div>
-
     <div id="toast-container"></div>
 
     <script>
@@ -200,7 +201,7 @@
             syncWithCloud();
 
             if(localChatHistory.length === 0) {
-                appendBubble('ai', "System: Memory Loaded. Architect Engine V6.2.3 (Chronological Priority Sorting) online.");
+                appendBubble('ai', "System: Memory Loaded. Architect Engine V6.2.4 (Priority Matrix Page) online.");
             } else {
                 localChatHistory.forEach(m => {
                     if (m.type === 'ai') processAIResponse(m.text);
@@ -480,11 +481,10 @@
             } catch (e) { showToast("Error Reverting", "error"); }
         }
 
-        // --- V6.2.3 CHRONOLOGICAL PRIORITY SORTING LOGIC ---
-        async function openPriorityModal() {
-            document.getElementById('priority-modal').classList.remove('hidden');
+        // --- V6.2.4 FULL PAGE PRIORITY LOGIC ---
+        async function loadPriorityTab() {
             const container = document.getElementById('priority-sliders');
-            container.innerHTML = '<div class="text-center text-white/50 text-xs py-8 animate-pulse">Scanning Schedule Data...</div>';
+            container.innerHTML = '<div class="text-center text-white/50 text-xs py-8 col-span-full animate-pulse">Scanning Schedule Data...</div>';
             
             try {
                 const res = await fetch(`${BackendAPI}/get_priorities`);
@@ -493,15 +493,11 @@
                     AppState.priorities = data.data;
                     renderPrioritySliders();
                 } else {
-                    container.innerHTML = '<div class="text-debt text-xs text-center py-8">Failed to map activities.</div>';
+                    container.innerHTML = '<div class="text-debt text-xs text-center py-8 col-span-full">Failed to map activities.</div>';
                 }
             } catch(e) {
-                container.innerHTML = '<div class="text-debt text-xs text-center py-8">Server Offline.</div>';
+                container.innerHTML = '<div class="text-debt text-xs text-center py-8 col-span-full">Server Offline.</div>';
             }
-        }
-
-        function closePriorityModal() {
-            document.getElementById('priority-modal').classList.add('hidden');
         }
 
         function renderPrioritySliders() {
@@ -509,11 +505,10 @@
             container.innerHTML = '';
             
             if(Object.keys(AppState.priorities).length === 0) {
-                container.innerHTML = '<div class="text-center text-white/50 text-xs py-8">No activities found in schedule.</div>';
+                container.innerHTML = '<div class="text-center text-white/50 text-xs py-8 col-span-full">No activities found in schedule.</div>';
                 return;
             }
 
-            // 1. Extract ordered unique names from the actual chronological schedule
             const orderedNames = [];
             if (AppState.allActivities && AppState.allActivities.length > 0) {
                 AppState.allActivities.forEach(item => {
@@ -527,14 +522,12 @@
                 });
             }
             
-            // 2. Fallback: catch any priorities that weren't caught in the loop above
             for (const act of Object.keys(AppState.priorities)) {
                 if (!orderedNames.includes(act)) {
                     orderedNames.push(act);
                 }
             }
 
-            // 3. Render sliders in chronological order
             orderedNames.forEach(activity => {
                 const score = AppState.priorities[activity];
                 let colorClass, labelClass, labelText;
@@ -607,7 +600,8 @@
                 
                 if(res.ok) {
                     showToast("Matrix Synced", "success");
-                    setTimeout(closePriorityModal, 500);
+                    // Optionally switch back to dashboard after saving
+                    // setTimeout(() => switchTab('dashboard'), 800);
                 } else {
                     showToast("Sync Failed", "error");
                 }
@@ -617,42 +611,17 @@
             btn.innerText = originalText;
         }
 
-        async function fetchAnalytics() {
-            try {
-                const res = await fetch(`${BackendAPI}/get_analytics`);
-                const result = await res.json();
-                if (result.status === "success") { AppState.analyticsData = result; toggleRange('week'); }
-            } catch (e) { showToast("Analytics Offline", "error"); }
-        }
-
-        function toggleRange(range) {
-            const w = document.getElementById('btn-week'), o = document.getElementById('btn-overall');
-            const data = range === 'week' ? AppState.analyticsData.week : AppState.analyticsData.overall;
-            w.className = range === 'week' ? "px-4 py-2 text-[10px] font-black uppercase rounded-lg bg-white text-black transition-all" : "px-4 py-2 text-[10px] font-black uppercase text-white/30 transition-all";
-            o.className = range === 'overall' ? "px-4 py-2 text-[10px] font-black uppercase rounded-lg bg-white text-black transition-all" : "px-4 py-2 text-[10px] font-black uppercase text-white/30 transition-all";
-            if(!data) return;
-            document.getElementById('stat-study-hrs').innerText = data.study;
-            document.getElementById('study-progress-bar').style.width = Math.min(100, (data.study / 10) * 100) + "%";
-            const offset = 377 - (377 * data.adherence) / 100;
-            document.getElementById('adherence-circle').style.strokeDashoffset = offset;
-            document.getElementById('circle-pct').innerText = data.adherence + "%";
-
-            const debtList = document.getElementById('debt-list'); debtList.innerHTML = ''; 
-            if (!data.debts_by_activity || Object.keys(data.debts_by_activity).length === 0) { debtList.innerHTML = '<div class="text-center text-sm font-bold text-white/30 py-4">NO DEBT 🎉</div>'; } 
-            else {
-                for (const [activity, debtVal] of Object.entries(data.debts_by_activity)) { debtList.innerHTML += `<div class="flex justify-between items-center text-sm font-bold border-b border-white/5 pb-2"><span class="text-white/70">${activity}</span><span class="text-debt">${debtVal}</span></div>`; }
-                debtList.innerHTML += `<div class="flex justify-between items-center text-[10px] font-black uppercase pt-2 mt-2"><span class="text-white/40">Total</span><span class="text-debt text-xl">${data.total_debt}</span></div>`;
-            }
-            
-            const maxVal = Math.max(...data.chart, 1);
-            const bars = document.getElementById('chart-bars').children;
-            data.chart.forEach((val, i) => { const height = Math.max(5, (val / maxVal) * 100); bars[i].style.height = height + "%"; bars[i].className = val > 0 ? "bg-white w-full rounded-t-lg chart-bar" : "bg-white/10 w-full rounded-t-lg chart-bar"; });
-        }
-
+        // --- TAB SWITCHER UPDATED TO HANDLE 4 TABS ---
         function switchTab(view) {
-            ['dashboard', 'insights', 'analytics'].forEach(s => { document.getElementById(`view-${s}`).classList.add('hidden'); document.getElementById(`nav-${s}`).classList.replace('tab-active', 'tab-inactive'); });
-            document.getElementById(`view-${view}`).classList.remove('hidden'); document.getElementById(`nav-${view}`).classList.replace('tab-inactive', 'tab-active');
+            ['dashboard', 'priority', 'insights', 'analytics'].forEach(s => { 
+                document.getElementById(`view-${s}`).classList.add('hidden'); 
+                document.getElementById(`nav-${s}`).classList.replace('tab-active', 'tab-inactive'); 
+            });
+            document.getElementById(`view-${view}`).classList.remove('hidden'); 
+            document.getElementById(`nav-${view}`).classList.replace('tab-inactive', 'tab-active');
+            
             if(view === 'analytics') fetchAnalytics();
+            if(view === 'priority') loadPriorityTab();
         }
 
         function showToast(m, t) {
