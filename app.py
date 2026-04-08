@@ -1,4 +1,4 @@
-# start of version v5.9.0 (Ripple Effect Engine)
+# start of version v5.9.1 (Ripple Math + Real-Time Context)
 from dotenv import load_dotenv
 load_dotenv()
 from flask import Flask, request, jsonify, Response, stream_with_context
@@ -86,7 +86,7 @@ cloud_state = {
 def health():
     return jsonify({
         "service": "Routine Flow Architect", 
-        "version": "5.9.0", 
+        "version": "5.9.1", 
         "status": "Online",
         "model": "gemini-3-flash-preview"
     }), 200
@@ -206,10 +206,24 @@ def chat():
             chat_headers = [h.strip() for h in all_chat[0] if h.strip()]
             memory = [dict(zip(chat_headers, r)) for r in all_chat[1:] if any(r)][-6:]
             
-        # V5.9.0 PROMPT UPGRADE: Arrays of Commands
+        # --- NEW: REAL-TIME CLOCK CONTEXT ---
+        now = datetime.now(IST)
+        cur_time_str = now.strftime('%I:%M %p')
+        curMin = (now.hour * 60) + now.minute
+        cur_activity = "Unknown"
+        for item in timetable_data:
+            times = item.get('Time', '').split('-')
+            if len(times) == 2:
+                s, e = parse_time_to_minutes(times[0]), parse_time_to_minutes(times[1])
+                if (e < s and (curMin >= s or curMin < e)) or (s <= curMin < e):
+                    cur_activity = item.get('Activity', 'Unknown')
+                    break
+                    
+        # V5.9.1 PROMPT UPGRADE
         prompt = f"""
         System: You are 'Routine Flow Architect', an AI assistant for Sriniket.
         Context: Sriniket is recovering from a bike accident.
+        REAL-TIME STATUS: It is currently {cur_time_str}. The user's active current session is '{cur_activity}'.
         Schedule Context: {json.dumps(lean_tt)}
         Memory: {json.dumps(memory)}
         
@@ -366,4 +380,4 @@ def clear_logs():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
-# end of version v5.9.0
+# end of version v5.9.1

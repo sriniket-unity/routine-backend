@@ -486,7 +486,7 @@
                 return '';
             }).join('');
 
-            const safeActions = encodeURIComponent(JSON.stringify(actions));
+            const safeActions = encodeURIComponent(JSON.stringify(actions)).replace(/'/g, "%27");
 
             div.innerHTML = `
                 <span class="text-[9px] font-black text-white/30 uppercase tracking-widest flex items-center gap-2">
