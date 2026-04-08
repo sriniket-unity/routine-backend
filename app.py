@@ -1,4 +1,4 @@
-# start of version v5.8.7
+# start of version v5.8.7 (with Prompt Patch)
 from dotenv import load_dotenv
 load_dotenv()
 from flask import Flask, request, jsonify, Response, stream_with_context
@@ -212,9 +212,10 @@ def chat():
         Schedule Context: {json.dumps(lean_tt)}
         Memory: {json.dumps(memory)}
         
-        CRITICAL INSTRUCTION: 
-        1. If the user asks a direct/simple question (e.g., "what model are you?", "what is 2+2?"), answer it DIRECTLY and CONCISELY. Do NOT add unsolicited advice about their schedule or recovery.
-        2. ONLY provide schedule recommendations or mention the recovery context IF the user explicitly asks for advice, schedule changes, or discusses their health/routine.
+        CRITICAL INSTRUCTIONS: 
+        1. If the user asks a direct/simple question, answer it DIRECTLY and CONCISELY. Do NOT add unsolicited advice.
+        2. ONLY provide schedule recommendations if the user explicitly asks for advice, schedule changes, or discusses health/routine.
+        3. STRICT JSON RULE: The `new_val` MUST ALWAYS be a precise number followed by 'h' (e.g., "0.5h", "1.0h", "0.0h"). NEVER output words like "undefined", "extended", or "none". If an activity is cancelled, use "0.0h".
         
         User Input: {user_msg}
         
