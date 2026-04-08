@@ -162,7 +162,7 @@
             syncWithCloud();
 
             if(localChatHistory.length === 0) {
-                appendBubble('ai', "System: Memory Loaded. Architect Engine V5.8.7 (Streaming) online.");
+                appendBubble('ai', "System: Memory Loaded. Architect Engine V5.9.0 (Ripple Math) online.");
             } else {
                 localChatHistory.forEach(m => {
                     if (m.type === 'ai') processAIResponse(m.text);
@@ -349,7 +349,6 @@
             } catch(e) { event.target.innerText = "Check-Out"; }
         }
 
-        // V5.8.7: The entirely new Streaming UI function
         async function sendMessage(overrideText = null) {
             const input = document.getElementById('chat-input');
             const msg = overrideText || input.value.trim();
@@ -375,7 +374,6 @@
                 let isFirstChunk = true;
                 const bubbleElement = document.getElementById(bubbleId);
 
-                // Reading the Server-Sent Events stream live
                 while (true) {
                     const { done, value } = await reader.read();
                     if (done) break;
@@ -398,7 +396,6 @@
                                 }
                                 
                                 rawText += parsed.text;
-                                // Display text live (including the raw JSON, which looks like hacker code)
                                 let displayHtml = rawText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
                                 bubbleElement.innerHTML = displayHtml;
                                 
@@ -409,11 +406,9 @@
                     }
                 }
                 
-                // Stream is completely finished. Save memory and transform the UI.
                 localChatHistory.push({type: 'user', text: msg}, {type: 'ai', text: rawText});
                 localStorage.setItem('routine_chat_cache', JSON.stringify(localChatHistory.slice(-20)));
                 
-                // Delete the raw streaming bubble and replace it with the clean text + Morphing Action Cards
                 bubbleElement.remove(); 
                 processAIResponse(rawText);
 
@@ -455,36 +450,54 @@
             } catch(e) { showToast("Wipe Failed", "error"); }
         }
 
-        // V5.8.7: This acts as our smart parser after the stream finishes
+        // V5.9.0 ARRAY PARSER
         function processAIResponse(rawText) {
             let cleanText = rawText;
-            const actionRegex = /ACTION_RECS:\s*({[\s\S]*?})/g;
+            const actionRegex = /ACTION_RECS:\s*(\[[\s\S]*?\])/g;
+            let match = actionRegex.exec(rawText);
             let actions = [];
-            let match;
             
-            while ((match = actionRegex.exec(rawText)) !== null) {
+            if (match) {
                 try { 
-                    actions.push(JSON.parse(match[1])); 
+                    actions = JSON.parse(match[1]); 
                     cleanText = cleanText.replace(match[0], ''); 
                 } catch(e) { console.error("Failed to parse AI JSON block", e); }
             }
             
             appendBubble('ai', cleanText.trim());
-            actions.forEach(data => renderActionCard(data));
+            
+            if(actions.length > 0) {
+                renderRippleCard(actions);
+            }
         }
 
-        function renderActionCard(data) {
+        // V5.9.0 RIPPLE UI CARD
+        function renderRippleCard(actions) {
             const win = document.getElementById('chat-window');
             const cardId = 'card-' + Date.now() + Math.floor(Math.random() * 1000);
             const div = document.createElement('div');
             div.id = cardId;
             div.className = "stat-card border-white/20 p-6 space-y-4 max-w-[85%] animate-in zoom-in-95 self-start ml-4 mt-2 shadow-xl";
+            
+            let changesHtml = actions.map(act => {
+                if(act.action === 'delete') return `<li class="text-debt">❌ Delete: ${act.target} <br><span class="text-[9px] text-white/40 italic">"${act.reason}"</span></li>`;
+                if(act.action === 'insert') return `<li class="text-green-400">➕ Insert: ${act.activity} (${act.duration}) <br><span class="text-[9px] text-white/40 italic">"${act.reason}"</span></li>`;
+                if(act.action === 'modify') return `<li class="text-yellow-400">⚡ Modify: ${act.target} ➔ ${act.new_val} <br><span class="text-[9px] text-white/40 italic">"${act.reason}"</span></li>`;
+                return '';
+            }).join('');
+
+            const safeActions = encodeURIComponent(JSON.stringify(actions));
+
             div.innerHTML = `
-                <span class="text-[9px] font-black text-white/30 uppercase tracking-widest">Architect Suggestion</span>
-                <h5 class="text-sm font-bold text-white">${data.action_target} ➔ ${data.new_val}</h5>
-                <p class="text-[11px] text-white/50 italic">"${data.reason}"</p>
-                <div class="flex space-x-2" id="controls-${cardId}">
-                    <button onclick="executeAdjustment('${cardId}', '${data.action_target}', '${data.new_val}')" class="flex-1 bg-white text-black py-3 rounded-xl font-black text-[10px] uppercase transition hover:bg-gray-200">Confirm</button>
+                <span class="text-[9px] font-black text-white/30 uppercase tracking-widest flex items-center gap-2">
+                    <svg class="w-3 h-3 text-white/50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                    Architect Proposal
+                </span>
+                <ul class="text-sm font-bold text-white space-y-3 mt-2 bg-white/5 p-4 rounded-xl border border-white/10">
+                    ${changesHtml}
+                </ul>
+                <div class="flex space-x-2 mt-4" id="controls-${cardId}">
+                    <button onclick="executeRippleAdjustment('${cardId}', '${safeActions}')" class="flex-1 bg-white text-black py-3 rounded-xl font-black text-[10px] uppercase transition hover:bg-gray-200">Approve & Apply</button>
                     <button onclick="document.getElementById('${cardId}').style.display='none'" class="px-5 py-3 border border-white/10 rounded-xl text-[10px] font-black uppercase text-white hover:bg-white/5 transition">Dismiss</button>
                 </div>
             `;
@@ -492,38 +505,29 @@
             win.scrollTop = win.scrollHeight;
         }
 
-        async function executeAdjustment(cardId, activity, newVal) {
+        // V5.9.0 ARRAY PAYLOAD EXECUTION
+        async function executeRippleAdjustment(cardId, safeActions) {
             const controls = document.getElementById(`controls-${cardId}`);
-            controls.innerHTML = `<button disabled class="flex-1 bg-sage text-black py-3 rounded-xl font-black text-[10px] uppercase opacity-50 cursor-not-allowed">Applying...</button>`;
+            controls.innerHTML = `<button disabled class="flex-1 bg-sage text-black py-3 rounded-xl font-black text-[10px] uppercase opacity-50 cursor-not-allowed">Recalculating Times...</button>`;
             
-            const original = AppState.allActivities.find(a => a.Activity.toLowerCase() === activity.toLowerCase());
-            const oldVal = original ? original.Duration : "1.0h";
-            const res = await fetch(`${BackendAPI}/update_timetable`, { method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ activity, new_val: newVal }) });
-            
-            if(res.ok) {
-                showToast("Schedule Adjusted", "success");
-                controls.innerHTML = `
-                    <button disabled class="flex-1 bg-white/10 text-white/50 py-3 rounded-xl font-black text-[10px] uppercase cursor-default">Applied ✅</button>
-                    <button onclick="revertAdjustment('${cardId}', '${activity}', '${oldVal}', '${newVal}')" class="flex-1 border border-debt text-debt hover:bg-debt/10 py-3 rounded-xl font-black text-[10px] uppercase transition">Revert</button>
-                `;
-                fetchSchedule();
-            } else { controls.innerHTML = `<button disabled class="flex-1 bg-debt text-white py-3 rounded-xl font-black text-[10px] uppercase">Failed ❌</button>`; }
-        }
-
-        async function revertAdjustment(cardId, activity, oldVal, appliedVal) {
-            const controls = document.getElementById(`controls-${cardId}`);
-            controls.innerHTML = `<button disabled class="flex-1 border border-debt text-debt py-3 rounded-xl font-black text-[10px] uppercase opacity-50 cursor-not-allowed">Reverting...</button>`;
-            
-            const res = await fetch(`${BackendAPI}/update_timetable`, { method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ activity, new_val: oldVal }) });
-            
-            if(res.ok) {
-                showToast("Restored Original", "info");
-                controls.innerHTML = `
-                    <button onclick="executeAdjustment('${cardId}', '${activity}', '${appliedVal}')" class="flex-1 bg-white text-black py-3 rounded-xl font-black text-[10px] uppercase transition hover:bg-gray-200">Confirm Again</button>
-                    <button onclick="document.getElementById('${cardId}').style.display='none'" class="px-5 py-3 border border-white/10 rounded-xl text-[10px] font-black uppercase text-white hover:bg-white/5 transition">Dismiss</button>
-                `;
-                fetchSchedule();
-            } else { controls.innerHTML = `<button disabled class="flex-1 bg-debt text-white py-3 rounded-xl font-black text-[10px] uppercase">Revert Failed</button>`; }
+            try {
+                const actionsArray = JSON.parse(decodeURIComponent(safeActions));
+                const res = await fetch(`${BackendAPI}/update_timetable`, { 
+                    method: 'PATCH', 
+                    headers: {'Content-Type': 'application/json'}, 
+                    body: JSON.stringify(actionsArray) 
+                });
+                
+                if(res.ok) {
+                    showToast("Schedule Restructured", "success");
+                    controls.innerHTML = `<button disabled class="flex-1 bg-white/10 text-white/50 py-3 rounded-xl font-black text-[10px] uppercase cursor-default">Applied Successfully ✅</button>`;
+                    fetchSchedule();
+                } else { 
+                    controls.innerHTML = `<button disabled class="flex-1 bg-debt text-white py-3 rounded-xl font-black text-[10px] uppercase">Failed ❌</button>`; 
+                }
+            } catch(e) {
+                controls.innerHTML = `<button disabled class="flex-1 bg-debt text-white py-3 rounded-xl font-black text-[10px] uppercase">Error ❌</button>`; 
+            }
         }
 
         async function fetchAnalytics() {
