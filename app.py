@@ -1,4 +1,4 @@
-# start of version v6.0.0 (Phase 3: Dynamic Debt Analytics)
+# start of version v6.2.0 (Phase 3: Sacrifice Math AI Integration)
 from dotenv import load_dotenv
 load_dotenv()
 from flask import Flask, request, jsonify, Response, stream_with_context
@@ -26,9 +26,10 @@ timetable_ws = None
 logs_ws = None
 chat_logs_ws = None 
 snapshot_ws = None 
+priority_ws = None 
 
 def init_sheets():
-    global timetable_ws, logs_ws, chat_logs_ws, snapshot_ws
+    global timetable_ws, logs_ws, chat_logs_ws, snapshot_ws, priority_ws
     try:
         creds_json = os.environ.get("GOOGLE_SHEETS_CREDS_JSON")
         if creds_json:
@@ -37,11 +38,12 @@ def init_sheets():
             timetable_ws = sheet.worksheet("Timetable")
             logs_ws = sheet.worksheet("Logs")
             chat_logs_ws = sheet.worksheet("ChatLogs")
-            try:
-                snapshot_ws = sheet.worksheet("Snapshot")
-            except gspread.exceptions.WorksheetNotFound:
-                app.logger.warning("Snapshot worksheet not found. Revert will fail.")
-                snapshot_ws = None
+            
+            try: snapshot_ws = sheet.worksheet("Snapshot")
+            except: snapshot_ws = None
+
+            try: priority_ws = sheet.worksheet("Priority")
+            except: priority_ws = None
 
             app.logger.info("✅ Sheets Status: Gemini Systems Synchronized.")
             return True
@@ -92,7 +94,7 @@ cloud_state = {
 # --- 🌐 ENDPOINTS ---
 @app.route('/', methods=['GET'])
 def health():
-    return jsonify({"service": "Routine Flow Architect", "version": "6.0.0", "status": "Online"}), 200
+    return jsonify({"service": "Routine Flow Architect", "version": "6.2.0", "status": "Online"}), 200
 
 @app.route('/get_state', methods=['GET'])
 def get_state(): 
@@ -151,6 +153,7 @@ def chat():
         if not chat_logs_ws: init_sheets()
         user_msg = request.json.get('message')
         
+        # 1. Fetch Schedule
         all_tt = timetable_ws.get_all_values()
         tt_headers = [h.strip() for h in all_tt[1] if h.strip()] if len(all_tt) > 1 else []
         timetable_data = []
@@ -158,11 +161,13 @@ def chat():
             if not r or r[0].strip().lower() == 'metric': break
             if any(r): timetable_data.append(dict(zip(tt_headers, r)))
             
-        lean_tt = timetable_data[-10:]
+        lean_tt = timetable_data[-15:] # Give AI a bit more context for rescheduling
         
+        # 2. Fetch Memory
         all_chat = chat_logs_ws.get_all_values()
         memory = [dict(zip([h.strip() for h in all_chat[0]], r)) for r in all_chat[1:] if any(r)][-6:] if len(all_chat) > 1 else []
             
+        # 3. Fetch Live Clock
         now = datetime.now(IST)
         cur_time_str = now.strftime('%I:%M %p')
         curMin = (now.hour * 60) + now.minute
@@ -174,20 +179,33 @@ def chat():
                 if (e < s and (curMin >= s or curMin < e)) or (s <= curMin < e):
                     cur_activity = item.get('Activity', 'Unknown')
                     break
+        
+        # 4. NEW: Fetch Priority Matrix Scores
+        user_priorities = {}
+        if priority_ws:
+            p_data = priority_ws.get_all_values()
+            for r in p_data:
+                if len(r) >= 2 and r[0].strip():
+                    user_priorities[r[0].strip()] = int(safe_float(r[1]))
                     
         prompt = f"""
-        System: You are 'Routine Flow Architect', an AI assistant for Sriniket.
+        System: You are 'Routine Flow Architect', an elite AI assistant for Sriniket.
         Context: Sriniket is recovering from a bike accident.
         REAL-TIME STATUS: It is currently {cur_time_str}. The user's active current session is '{cur_activity}'.
-        Schedule Context: {json.dumps(lean_tt)}
+        
+        USER PRIORITY MATRIX (0-10 Scale):
+        {json.dumps(user_priorities)}
+        
+        Schedule Context (Next 15 Blocks): {json.dumps(lean_tt)}
         Memory: {json.dumps(memory)}
         
-        CRITICAL INSTRUCTIONS: 
-        1. If the user asks a simple question, answer it DIRECTLY. Do NOT add unsolicited advice.
-        2. ONLY provide schedule recommendations if explicitly asked.
-        3. STRICT JSON RULE: You must output schedule changes as a JSON ARRAY of command objects. 
+        CRITICAL INSTRUCTIONS - SACRIFICE MATH: 
+        If the user asks to insert a new activity (like an emergency or sudden task), you MUST resolve the time conflict using their Priority Matrix:
+        1. Expendable (Score 0-3): Target these activities FIRST for deletion (e.g., Wind down, Break) to make room.
+        2. Flexible (Score 4-7): You may shrink their duration (using 'modify' action) to absorb the new time impact.
+        3. Vital (Score 8-10): NEVER delete or shrink these activities (e.g., Sleep, Gym, main Study). You must preserve them at all costs.
         
-        Valid Actions:
+        Valid Actions for ACTION_RECS JSON Array:
         - "modify": Changes duration of an existing activity. (Requires "target", "new_val", "reason")
         - "delete": Removes an activity entirely. (Requires "target", "reason")
         - "insert": Adds a brand new activity at the current time. (Requires "activity", "duration", "reason")
@@ -196,8 +214,8 @@ def chat():
         
         User Input: {user_msg}
         
-        Mandatory Change Format (Use ONLY if making schedule changes. Must be valid JSON array):
-        ACTION_RECS: [{{"action": "delete", "target": "Study Session 4", "reason": "Emergency"}}, {{"action": "insert", "activity": "Doctor", "duration": "2.0h", "reason": "Checkup"}}]
+        Mandatory Format (Use ONLY if making schedule changes. Must be valid JSON array):
+        ACTION_RECS: [{{"action": "delete", "target": "Wind down", "reason": "Sacrificed low priority task for emergency"}}, {{"action": "insert", "activity": "Doctor", "duration": "2.0h", "reason": "Checkup"}}]
         """
         model = genai.GenerativeModel('gemini-3-flash-preview')
         
@@ -315,6 +333,56 @@ def revert_timetable():
         return jsonify({"status": "success", "message": "Reverted successfully."}), 200
     except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
 
+@app.route('/get_priorities', methods=['GET'])
+def get_priorities():
+    try:
+        if not priority_ws or not timetable_ws: init_sheets()
+        
+        all_tt = timetable_ws.get_all_values()
+        unique_activities = set()
+        
+        if len(all_tt) > 2:
+            headers = [h.strip() for h in all_tt[1]]
+            act_idx = headers.index('Activity') if 'Activity' in headers else 2
+            
+            for r in all_tt[2:]:
+                if not r or r[0].strip().lower() == 'metric' or 'hours' in str(r).lower(): break
+                if len(r) > act_idx and str(r[act_idx]).strip():
+                    act_name = str(r[act_idx]).strip()
+                    if "study" in act_name.lower(): act_name = "Study"
+                    unique_activities.add(act_name)
+                    
+        saved_priorities = {}
+        if priority_ws:
+            p_data = priority_ws.get_all_values()
+            for r in p_data:
+                if len(r) >= 2 and r[0].strip():
+                    saved_priorities[r[0].strip()] = int(safe_float(r[1]))
+                    
+        final_priorities = {}
+        for act in unique_activities:
+            final_priorities[act] = saved_priorities.get(act, 5) 
+            
+        return jsonify({"status": "success", "data": final_priorities}), 200
+    except Exception as e: 
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/save_priorities', methods=['POST'])
+def save_priorities():
+    try:
+        data = request.json
+        if not priority_ws: init_sheets()
+        
+        if priority_ws:
+            priority_ws.clear()
+            rows = [[k, v] for k, v in data.items()]
+            if rows:
+                priority_ws.append_rows(rows)
+                
+        return jsonify({"status": "success", "message": "Priorities synced to cloud."}), 200
+    except Exception as e: 
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 @app.route('/log_session', methods=['POST'])
 def log_session():
     try:
@@ -352,7 +420,6 @@ def clear_logs():
         return jsonify({"status": "success"}), 200
     except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
 
-# --- V6.0.0 DYNAMIC ANALYTICS UPGRADE ---
 @app.route('/get_analytics', methods=['GET'])
 def get_analytics():
     try:
@@ -383,7 +450,6 @@ def get_analytics():
             
             for r in valid_rows:
                 act_name = str(r.get(name_k, 'Unknown')).strip()
-                # Dynamically group "Study Session 1" into just "Study"
                 if "study" in act_name.lower(): act_name = "Study"
                 
                 actual_val = safe_float(r.get(act_k))
@@ -431,4 +497,4 @@ def get_analytics():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
-# end of version v6.0.0
+# end of version v6.2.0
