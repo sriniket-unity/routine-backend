@@ -1,4 +1,4 @@
-# start of version v5.9.4 (Full Restoration + Syntax Patch)
+# start of version v5.9.6 (Revert via Google Sheets)
 from dotenv import load_dotenv
 load_dotenv()
 from flask import Flask, request, jsonify, Response, stream_with_context
@@ -25,9 +25,10 @@ genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 timetable_ws = None
 logs_ws = None
 chat_logs_ws = None 
+snapshot_ws = None # NEW
 
 def init_sheets():
-    global timetable_ws, logs_ws, chat_logs_ws
+    global timetable_ws, logs_ws, chat_logs_ws, snapshot_ws
     try:
         creds_json = os.environ.get("GOOGLE_SHEETS_CREDS_JSON")
         if creds_json:
@@ -36,6 +37,13 @@ def init_sheets():
             timetable_ws = sheet.worksheet("Timetable")
             logs_ws = sheet.worksheet("Logs")
             chat_logs_ws = sheet.worksheet("ChatLogs")
+            # NEW: Connect to Snapshot tab
+            try:
+                snapshot_ws = sheet.worksheet("Snapshot")
+            except gspread.exceptions.WorksheetNotFound:
+                app.logger.warning("Snapshot worksheet not found. Revert will fail.")
+                snapshot_ws = None
+
             app.logger.info("✅ Sheets Status: Gemini Systems Synchronized.")
             return True
         else:
@@ -85,7 +93,7 @@ cloud_state = {
 # --- 🌐 ENDPOINTS ---
 @app.route('/', methods=['GET'])
 def health():
-    return jsonify({"service": "Routine Flow Architect", "version": "5.9.4", "status": "Online"}), 200
+    return jsonify({"service": "Routine Flow Architect", "version": "5.9.6", "status": "Online"}), 200
 
 @app.route('/get_state', methods=['GET'])
 def get_state(): 
@@ -145,7 +153,6 @@ def chat():
         user_msg = request.json.get('message')
         
         all_tt = timetable_ws.get_all_values()
-        # V5.9.4 FIX: all_tt instead of all_val
         tt_headers = [h.strip() for h in all_tt[1] if h.strip()] if len(all_tt) > 1 else []
         timetable_data = []
         for r in all_tt[2:]:
@@ -217,6 +224,8 @@ def chat():
 def update_timetable():
     try:
         data = request.json
+        if not snapshot_ws: init_sheets()
+        
         all_b_to_d = timetable_ws.get('B3:D100') 
         
         current_schedule = []
@@ -226,7 +235,15 @@ def update_timetable():
             current_schedule.append({"Time": r[0], "Activity": r[1], "Duration": r[2]})
             
         original_length = len(current_schedule)
+        
+        # --- SAVE SNAPSHOT TO GOOGLE SHEETS ---
+        if snapshot_ws:
+             snapshot_ws.clear()
+             snapshot_data = [[row.get('Time', ''), row.get('Activity', ''), row.get('Duration', '')] for row in current_schedule]
+             if snapshot_data:
+                 snapshot_ws.append_rows(snapshot_data)
 
+        # 2. Execute AI Commands
         for cmd in data:
             if cmd.get('action') == 'delete':
                 current_schedule = [row for row in current_schedule if not re.match(rf'^{re.escape(cmd.get("target"))}$', row.get('Activity', ''), re.IGNORECASE)]
@@ -249,6 +266,7 @@ def update_timetable():
                          row['Duration'] = cmd.get("new_val").replace('h', '')
                          break
 
+        # 3. THE RIPPLE EFFECT
         def format_12hr(mins):
             h = (mins // 60) % 24
             m = mins % 60
@@ -280,7 +298,30 @@ def update_timetable():
         return jsonify({"status": "success", "message": "Ripple effect applied."}), 200
     except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
 
-# --- RESTORED ENDPOINTS ---
+@app.route('/revert_timetable', methods=['POST'])
+def revert_timetable():
+    try:
+        if not snapshot_ws: init_sheets()
+        if not snapshot_ws:
+             return jsonify({"status": "error", "message": "Snapshot worksheet missing."}), 500
+
+        # Retrieve snapshot from Google Sheets
+        snapshot_data = snapshot_ws.get_all_values()
+        
+        if not snapshot_data:
+            return jsonify({"status": "error", "message": "No snapshot data found."}), 400
+            
+        original_length = len(timetable_ws.get('B3:D100'))
+        timetable_ws.batch_clear([f'B3:D{3 + original_length}'])
+             
+        if snapshot_data:
+            timetable_ws.update(f'B3:D{2 + len(snapshot_data)}', snapshot_data)
+
+        # Clear snapshot after reverting
+        snapshot_ws.clear()
+        return jsonify({"status": "success", "message": "Reverted successfully."}), 200
+    except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
+
 @app.route('/log_session', methods=['POST'])
 def log_session():
     try:
@@ -366,4 +407,4 @@ def get_analytics():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
-# end of version v5.9.4
+# end of version v5.9.6
