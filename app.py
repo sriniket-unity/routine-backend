@@ -1,4 +1,4 @@
-# start of version v5.9.3 (Precision Ripple + Aesthetic Math)
+# start of version v5.9.4 (Full Restoration + Syntax Patch)
 from dotenv import load_dotenv
 load_dotenv()
 from flask import Flask, request, jsonify, Response, stream_with_context
@@ -70,7 +70,6 @@ def parse_time_to_minutes(t_str):
 def safe_float(val):
     try:
         if not val or str(val).strip() == '': return 0.0
-        # Aggressive regex to strip "hrs", "hr", and keep only the math numbers
         clean_val = re.sub(r'[^\d.]', '', str(val))
         return float(clean_val) if clean_val else 0.0
     except: return 0.0
@@ -86,7 +85,7 @@ cloud_state = {
 # --- 🌐 ENDPOINTS ---
 @app.route('/', methods=['GET'])
 def health():
-    return jsonify({"service": "Routine Flow Architect", "version": "5.9.3", "status": "Online"}), 200
+    return jsonify({"service": "Routine Flow Architect", "version": "5.9.4", "status": "Online"}), 200
 
 @app.route('/get_state', methods=['GET'])
 def get_state(): 
@@ -109,7 +108,6 @@ def get_schedule():
         
         data = []
         for r in all_val[2:]:
-            # Stop parsing if we hit the "Metric" block at the bottom
             if not r or r[0].strip().lower() == 'metric' or (len(r) > 1 and 'hours' in str(r[1]).lower()): 
                 break
             if any(r): 
@@ -147,7 +145,8 @@ def chat():
         user_msg = request.json.get('message')
         
         all_tt = timetable_ws.get_all_values()
-        tt_headers = [h.strip() for h in all_val[1] if h.strip()] if all_tt else []
+        # V5.9.4 FIX: all_tt instead of all_val
+        tt_headers = [h.strip() for h in all_tt[1] if h.strip()] if len(all_tt) > 1 else []
         timetable_data = []
         for r in all_tt[2:]:
             if not r or r[0].strip().lower() == 'metric': break
@@ -214,36 +213,27 @@ def chat():
         return Response(stream_with_context(generate()), mimetype='text/event-stream')
     except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
 
-# --- PHASE 2: THE RIPPLE EFFECT ENGINE (v5.9.3 PRECISION PATCH) ---
 @app.route('/update_timetable', methods=['PATCH'])
 def update_timetable():
     try:
         data = request.json
-        
-        # 1. Fetch only Columns B, C, D to protect Column A (Merged Days) & Bottom Metrics
         all_b_to_d = timetable_ws.get('B3:D100') 
         
         current_schedule = []
         for r in all_b_to_d:
-            # Stop if we hit an empty row or the "Metrics" block
-            if not r or len(r) == 0 or r[0].strip() == '' or 'Hours' in r:
-                break
-            # Pad to 3 elements if sheet returned missing empty trailing cells
+            if not r or len(r) == 0 or r[0].strip() == '' or 'Hours' in r: break
             while len(r) < 3: r.append('')
             current_schedule.append({"Time": r[0], "Activity": r[1], "Duration": r[2]})
             
         original_length = len(current_schedule)
 
-        # 2. Execute AI Commands
         for cmd in data:
             if cmd.get('action') == 'delete':
                 current_schedule = [row for row in current_schedule if not re.match(rf'^{re.escape(cmd.get("target"))}$', row.get('Activity', ''), re.IGNORECASE)]
-            
             elif cmd.get('action') == 'insert':
                 now = datetime.now(IST)
                 curMin = (now.hour * 60) + now.minute
                 insert_idx = len(current_schedule)
-                
                 for idx, item in enumerate(current_schedule):
                     times = item.get('Time', '').split('-')
                     if len(times) == 2:
@@ -251,17 +241,14 @@ def update_timetable():
                         if s > curMin:
                             insert_idx = idx
                             break
-                            
                 new_block = {"Time": "TBD", "Activity": cmd.get("activity"), "Duration": cmd.get("duration").replace('h', '')}
                 current_schedule.insert(insert_idx, new_block)
-                
             elif cmd.get('action') == 'modify':
                  for row in current_schedule:
                      if re.match(rf'^{re.escape(cmd.get("target"))}$', row.get('Activity', ''), re.IGNORECASE):
                          row['Duration'] = cmd.get("new_val").replace('h', '')
                          break
 
-        # 3. THE RIPPLE EFFECT: Aesthetic AM/PM Recalculation
         def format_12hr(mins):
             h = (mins // 60) % 24
             m = mins % 60
@@ -273,43 +260,110 @@ def update_timetable():
         if current_schedule:
             first_time = current_schedule[0].get('Time', '').split('-')[0].strip()
             current_minutes = parse_time_to_minutes(first_time)
-            
             for row in current_schedule:
                 start_str = format_12hr(current_minutes)
                 duration_val = safe_float(row.get('Duration', 1.0))
                 duration_mins = int(duration_val * 60)
                 current_minutes += duration_mins
-                
-                if current_minutes >= 1440:
-                    current_minutes -= 1440
-                    
+                if current_minutes >= 1440: current_minutes -= 1440
                 end_str = format_12hr(current_minutes)
                 row['Time'] = f"{start_str} - {end_str}"
-                
-                # Restore elegant 'hr' / 'hrs' formatting
                 row['Duration'] = f"{int(duration_val) if duration_val.is_integer() else duration_val} {'hr' if duration_val == 1.0 else 'hrs'}"
 
-        # 4. Precision Update to Google Sheets (Only B, C, D)
         timetable_ws.batch_clear([f'B3:D{3 + original_length}'])
-        
         rows_to_update = []
         for row in current_schedule:
              rows_to_update.append([row.get('Time', ''), row.get('Activity', ''), row.get('Duration', '')])
-             
         if rows_to_update:
             timetable_ws.update(f'B3:D{2 + len(rows_to_update)}', rows_to_update)
 
         return jsonify({"status": "success", "message": "Ripple effect applied."}), 200
-        
-    except Exception as e: 
-        app.logger.error(traceback.format_exc())
-        return jsonify({"status": "error", "message": str(e)}), 500
+    except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
+
+# --- RESTORED ENDPOINTS ---
+@app.route('/log_session', methods=['POST'])
+def log_session():
+    try:
+        d = request.json
+        ts = datetime.now(IST).strftime('%Y-%m-%d %H:%M')
+        logs_ws.append_row([ts, d.get('activity'), d.get('planned_duration'), d.get('actual_duration'), d.get('time_debt', 0)])
+        return jsonify({"status": "success"}), 200
+    except Exception as e: return jsonify({"status": "error"}), 500
+
+@app.route('/bulk_log', methods=['POST'])
+def bulk_log():
+    try:
+        if not logs_ws: init_sheets()
+        data = request.json
+        rows = [[datetime.now(IST).strftime('%Y-%m-%d %H:%M'), d.get('activity'), d.get('planned_duration'), d.get('actual_duration'), d.get('time_debt', 0)] for d in data]
+        logs_ws.append_rows(rows)
+        return jsonify({"status": "success", "inserted": len(rows)}), 200
+    except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/clear_chat', methods=['DELETE'])
+def clear_chat():
+    try:
+        if not chat_logs_ws: init_sheets()
+        records = chat_logs_ws.get_all_values()
+        if len(records) > 1: chat_logs_ws.delete_rows(2, len(records))
+        return jsonify({"status": "success"}), 200
+    except Exception as e: return jsonify({"status": "error"}), 500
+
+@app.route('/clear_logs', methods=['DELETE'])
+def clear_logs():
+    try:
+        if not logs_ws: init_sheets()
+        records = logs_ws.get_all_values()
+        if len(records) > 1: logs_ws.delete_rows(2, len(records))
+        return jsonify({"status": "success"}), 200
+    except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/get_analytics', methods=['GET'])
 def get_analytics():
-    # ... (Truncated for brevity, analytics logic remains unchanged) ...
-    return jsonify({"status": "success"}), 200
+    try:
+        if not logs_ws: init_sheets()
+        if not logs_ws: return jsonify({"status": "error"}), 500
+        raw_logs = logs_ws.get_all_values()
+        if len(raw_logs) <= 1: return jsonify({"status": "success", "overall": None, "week": None}), 200
+        headers = [h.strip() for h in raw_logs[0] if h.strip()]
+        all_logs = [dict(zip(headers, r)) for r in raw_logs[1:] if any(r)]
+        now = datetime.now(IST)
+        start_of_week = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0)
+
+        def process_subset(subset):
+            if not subset: return {"study": 0, "adherence": 0, "debt": 0, "chart": [0.0]*7}
+            keys = list(subset[0].keys()) if subset else []
+            act_k = next((k for k in keys if 'actual' in k.lower()), None)
+            debt_k = next((k for k in keys if 'debt' in k.lower()), None)
+            ts_k = next((k for k in keys if 'time' in k.lower() or 'stamp' in k.lower()), None)
+            valid_rows = [r for r in subset if str(r.get(act_k, '')).strip() or str(r.get(debt_k, '')).strip()]
+            if not valid_rows: return {"study": 0, "adherence": 0, "debt": 0, "chart": [0.0]*7}
+            total_study = sum(safe_float(r.get(act_k)) for r in valid_rows)
+            total_debt = sum(safe_float(r.get(debt_k)) for r in valid_rows)
+            completed = sum(1 for r in valid_rows if safe_float(r.get(act_k)) > 0)
+            adherence = round((completed / len(valid_rows)) * 100)
+            chart = [0.0] * 7
+            for r in valid_rows:
+                try:
+                    dt = datetime.strptime(sanitize_ts(r.get(ts_k, '')), '%Y-%m-%d %H:%M')
+                    chart[dt.weekday()] += safe_float(r.get(act_k))
+                except: continue
+            return {"study": round(total_study, 1), "adherence": adherence, "debt": round(total_debt, 1), "chart": chart}
+
+        week_logs = []
+        ts_key = next((k for k in all_logs[0].keys() if 'time' in k.lower() or 'stamp' in k.lower()), None)
+        for r in all_logs:
+            try:
+                if IST.localize(datetime.strptime(sanitize_ts(r.get(ts_key, '')), '%Y-%m-%d %H:%M')) >= start_of_week:
+                    week_logs.append(r)
+            except: continue
+        return jsonify({
+            "status": "success", 
+            "overall": process_subset(all_logs), 
+            "week": process_subset(week_logs)
+        }), 200
+    except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
-# end of version v5.9.3
+# end of version v5.9.4
