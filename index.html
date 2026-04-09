@@ -5,8 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     
     <title>Routine Flow | Architect</title>
-    <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#000000">
     <link rel="apple-touch-icon" href="https://raw.githubusercontent.com/google/material-design-icons/master/png/action/schedule/materialicons/512dp/2x/baseline_schedule_white_512dp.png">
     
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23050505'/><text x='50%' y='50%' font-family='sans-serif' font-weight='900' font-style='italic' font-size='48' fill='%23FFFFFF' text-anchor='middle' dy='.35em'>RF</text></svg>">
@@ -14,16 +12,6 @@
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono:wght@700&family=Outfit:wght@800&display=swap" rel="stylesheet">
     
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js').then(reg => {
-                    console.log('ServiceWorker registered:', reg.scope);
-                }).catch(err => console.log('ServiceWorker error:', err));
-            });
-        }
-    </script>
-
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -241,7 +229,7 @@
             syncWithCloud();
 
             if(localChatHistory.length === 0) {
-                appendBubble('ai', "System: Memory Loaded. Architect Engine V7.3.0 (Native PWA Core) online.");
+                appendBubble('ai', "System: Memory Loaded. Architect Engine V7.3.2 (Scoped Ripple Logic) online.");
             } else {
                 localChatHistory.forEach(m => {
                     if (m.type === 'ai') processAIResponse(m.text);
@@ -527,7 +515,12 @@
                 if(res.ok) {
                     showToast("Schedule Restructured", "success");
                     controls.innerHTML = `<button disabled class="flex-1 bg-white/10 text-white/50 py-3 rounded-xl font-black text-[10px] uppercase cursor-default">Applied Successfully ✅</button><button onclick="revertRippleAdjustment('${cardId}')" class="px-5 border border-debt/30 text-debt py-3 rounded-xl font-black text-[10px] uppercase hover:bg-debt/10 transition">Revert</button>`;
-                    fetchSchedule();
+                    
+                    // INSTANT UI REFRESH
+                    await fetchSchedule();
+                    const activeDay = (AppState.currentActivity && AppState.currentActivity.Day) ? AppState.currentActivity.Day : new Date().toLocaleString('en-us', {  weekday: 'long' });
+                    renderScheduleDay(activeDay);
+
                     if (localChatHistory.length > 0) {
                         for (let i = localChatHistory.length - 1; i >= 0; i--) {
                             if (localChatHistory[i].type === 'ai' && localChatHistory[i].text.includes('ACTION_RECS:')) {
@@ -548,7 +541,12 @@
                 if (res.ok) {
                     showToast("Schedule Reverted", "success");
                     controls.innerHTML = `<button disabled class="flex-1 bg-white/10 text-white/50 py-3 rounded-xl font-black text-[10px] uppercase cursor-default">Reverted ⏪</button>`;
-                    fetchSchedule();
+                    
+                    // INSTANT UI REFRESH
+                    await fetchSchedule();
+                    const activeDay = (AppState.currentActivity && AppState.currentActivity.Day) ? AppState.currentActivity.Day : new Date().toLocaleString('en-us', {  weekday: 'long' });
+                    renderScheduleDay(activeDay);
+
                     if (localChatHistory.length > 0) {
                         for (let i = localChatHistory.length - 1; i >= 0; i--) {
                             if (localChatHistory[i].type === 'ai' && localChatHistory[i].text.includes('APPLIED_RECS:')) {

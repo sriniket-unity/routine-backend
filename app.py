@@ -1,4 +1,4 @@
-# start of version v7.1.0 (Phase 4: Full Schedule Data Endpoint)
+# start of version v7.3.2 (Scoped Deletes & Day-Anchored Ripple)
 from dotenv import load_dotenv
 load_dotenv()
 from flask import Flask, request, jsonify, Response, stream_with_context
@@ -84,7 +84,7 @@ cloud_state = { "state": "READY", "activity": None, "start_time": None, "accumul
 # --- 🌐 ENDPOINTS ---
 @app.route('/', methods=['GET'])
 def health():
-    return jsonify({"service": "Routine Flow Architect", "version": "7.1.0", "status": "Online"}), 200
+    return jsonify({"service": "Routine Flow Architect", "version": "7.3.2", "status": "Online"}), 200
 
 @app.route('/get_state', methods=['GET'])
 def get_state(): 
@@ -227,7 +227,8 @@ def chat():
         Mandatory Format (Use ONLY if making schedule changes. Must be valid JSON array):
         ACTION_RECS: [{{"action": "delete", "target": "Wind down", "reason": "Sacrificed low priority task for emergency"}}]
         """
-        model = genai.GenerativeModel('gemini-3-flash-preview')
+        
+        model = genai.GenerativeModel('gemini-1.5-flash')
         
         def generate():
             full_text = ""
@@ -255,47 +256,57 @@ def update_timetable():
         
         all_a_to_d = timetable_ws.get('A3:D150') 
         current_schedule = []
+        
+        # 1. Map rows to exact days (Resolving Merged Cells)
+        temp_day = "Monday"
         for r in all_a_to_d:
             if not r or (len(r) > 0 and r[0].strip().lower() == 'metric') or (len(r) > 2 and 'hours' in str(r[2]).lower()): 
                 break
             while len(r) < 4: r.append('')
-            current_schedule.append({"Day_Cell": r[0], "Time": r[1], "Activity": r[2], "Duration": r[3]})
+            if str(r[0]).strip(): temp_day = str(r[0]).strip()
+            current_schedule.append({"Day_Cell": temp_day, "Time": r[1], "Activity": r[2], "Duration": r[3], "Resolved_Day": temp_day})
             
         original_length = len(current_schedule)
         
         if snapshot_ws:
              snapshot_ws.clear()
              snapshot_data = [[row.get('Day_Cell', ''), row.get('Time', ''), row.get('Activity', ''), row.get('Duration', '')] for row in current_schedule]
-             if snapshot_data:
-                 snapshot_ws.append_rows(snapshot_data)
+             if snapshot_data: snapshot_ws.append_rows(snapshot_data)
 
+        now = datetime.now(IST)
+        cur_day_name = now.strftime('%A')
+        if now.hour < 8: cur_day_name = (now - timedelta(days=1)).strftime('%A')
+        curMin = (now.hour * 60) + now.minute
+
+        # 2. Scoped Commands (Only affect current day)
         for cmd in data:
-            if cmd.get('action') == 'delete':
-                current_schedule = [row for row in current_schedule if not re.match(rf'^{re.escape(cmd.get("target"))}$', row.get('Activity', ''), re.IGNORECASE)]
-            elif cmd.get('action') == 'insert':
-                now = datetime.now(IST)
-                curMin = (now.hour * 60) + now.minute
+            action = cmd.get('action')
+            target = cmd.get('target', '')
+
+            if action == 'delete':
+                for idx, row in enumerate(current_schedule):
+                    if row['Resolved_Day'] == cur_day_name and re.match(rf'^{re.escape(target)}$', row.get('Activity', ''), re.IGNORECASE):
+                        current_schedule.pop(idx)
+                        break 
+
+            elif action == 'modify':
+                 for idx, row in enumerate(current_schedule):
+                     if row['Resolved_Day'] == cur_day_name and re.match(rf'^{re.escape(target)}$', row.get('Activity', ''), re.IGNORECASE):
+                         row['Duration'] = cmd.get("new_val").replace('h', '')
+                         break
+
+            elif action == 'insert':
                 insert_idx = len(current_schedule)
-                cur_day_name = now.strftime('%A')
-                if now.hour < 8: cur_day_name = (now - timedelta(days=1)).strftime('%A')
-                
-                temp_day = "Monday"
-                for idx, item in enumerate(current_schedule):
-                    if item['Day_Cell'].strip(): temp_day = item['Day_Cell'].strip()
-                    if temp_day == cur_day_name:
-                        times = item.get('Time', '').split('-')
+                for idx, row in enumerate(current_schedule):
+                    if row['Resolved_Day'] == cur_day_name:
+                        times = row.get('Time', '').split('-')
                         if len(times) == 2:
                             s = parse_time_to_minutes(times[0])
                             if s > curMin:
                                 insert_idx = idx
                                 break
-                new_block = {"Day_Cell": "", "Time": "TBD", "Activity": cmd.get("activity"), "Duration": cmd.get("duration").replace('h', '')}
+                new_block = {"Day_Cell": cur_day_name, "Time": "TBD", "Activity": cmd.get("activity"), "Duration": cmd.get("duration").replace('h', ''), "Resolved_Day": cur_day_name}
                 current_schedule.insert(insert_idx, new_block)
-            elif cmd.get('action') == 'modify':
-                 for row in current_schedule:
-                     if re.match(rf'^{re.escape(cmd.get("target"))}$', row.get('Activity', ''), re.IGNORECASE):
-                         row['Duration'] = cmd.get("new_val").replace('h', '')
-                         break
 
         def format_12hr(mins):
             h = (mins // 60) % 24
@@ -305,21 +316,32 @@ def update_timetable():
             if h12 == 0: h12 = 12
             return f"{h12:02d}:{m:02d} {ampm}"
 
+        # 3. Day-Anchored Ripple (Prevents pushing the whole week out of sync)
         if current_schedule:
-            first_time = current_schedule[0].get('Time', '').split('-')[0].strip()
-            current_minutes = parse_time_to_minutes(first_time)
+            day_anchors = {}
             for row in current_schedule:
-                start_str = format_12hr(current_minutes)
-                duration_val = safe_float(row.get('Duration', 1.0))
-                duration_mins = int(duration_val * 60)
-                current_minutes += duration_mins
-                if current_minutes >= 1440: current_minutes -= 1440
-                end_str = format_12hr(current_minutes)
-                row['Time'] = f"{start_str} - {end_str}"
-                row['Duration'] = f"{int(duration_val) if duration_val.is_integer() else duration_val} {'hr' if duration_val == 1.0 else 'hrs'}"
+                day = row['Resolved_Day']
+                if day not in day_anchors:
+                    times = row.get('Time', '').split('-')
+                    if len(times) > 0: day_anchors[day] = parse_time_to_minutes(times[0])
+                    else: day_anchors[day] = 360 # Default 6 AM
+
+            for day, anchor_mins in day_anchors.items():
+                current_minutes = anchor_mins
+                for row in current_schedule:
+                    if row['Resolved_Day'] == day:
+                        start_str = format_12hr(current_minutes)
+                        duration_val = safe_float(row.get('Duration', 1.0))
+                        duration_mins = int(duration_val * 60)
+                        current_minutes += duration_mins
+                        if current_minutes >= 1440: current_minutes -= 1440
+                        end_str = format_12hr(current_minutes)
+                        row['Time'] = f"{start_str} - {end_str}"
+                        row['Duration'] = f"{int(duration_val) if duration_val.is_integer() else duration_val} {'hr' if duration_val == 1.0 else 'hrs'}"
 
         timetable_ws.batch_clear([f'A3:D{3 + original_length}'])
-        rows_to_update = [[row.get('Day_Cell', ''), row.get('Time', ''), row.get('Activity', ''), row.get('Duration', '')] for row in current_schedule]
+        # Writes the flat DB back to sheets, unmerging visually to prevent glitches
+        rows_to_update = [[row.get('Resolved_Day', ''), row.get('Time', ''), row.get('Activity', ''), row.get('Duration', '')] for row in current_schedule]
         if rows_to_update:
             timetable_ws.update(f'A3:D{2 + len(rows_to_update)}', rows_to_update)
 
@@ -465,4 +487,4 @@ def get_analytics():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
-# end of version v7.1.0
+# end of version v7.3.2
