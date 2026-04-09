@@ -100,7 +100,7 @@
                     <button onclick="renderScheduleDay('Sunday')" class="day-btn text-white/40 hover:text-white font-black uppercase tracking-widest text-[10px] pb-2 border-b-2 border-transparent transition whitespace-nowrap" id="btn-day-Sunday">SUN</button>
                 </div>
 
-                <div id="schedule-timeline" class="space-y-4 max-h-[60vh] overflow-y-auto pr-4 hide-scrollbar">
+                <div id="schedule-timeline" class="space-y-4 max-h-[60vh] overflow-y-auto pr-4 hide-scrollbar pb-10 relative">
                     <div class="text-center text-white/30 text-xs font-bold py-10">Fetching Master Schedule...</div>
                 </div>
 
@@ -225,7 +225,7 @@
             syncWithCloud();
 
             if(localChatHistory.length === 0) {
-                appendBubble('ai', "System: Memory Loaded. Architect Engine V7.1.0 (Mastermind Integration) online.");
+                appendBubble('ai', "System: Memory Loaded. Architect Engine V7.1.1 (Schedule Highlight) online.");
             } else {
                 localChatHistory.forEach(m => {
                     if (m.type === 'ai') processAIResponse(m.text);
@@ -244,7 +244,7 @@
                 const d = await res.json();
                 if (d.status === "success") {
                     AppState.allActivities = d.data;
-                    AppState.fullSchedule = d.full_data || []; // Load full 7 days
+                    AppState.fullSchedule = d.full_data || []; 
                     
                     AppState.currentActivity = d.cur;
                     document.getElementById('current-activity').innerText = d.cur.Activity;
@@ -508,9 +508,8 @@
             } catch (e) { showToast("Error Reverting", "error"); }
         }
 
-        // --- V7.1.0 SCHEDULE VISUALIZER LOGIC ---
+        // --- V7.1.1 SCHEDULE VISUALIZER AUTO-SCROLL LOGIC ---
         function renderScheduleDay(dayName) {
-            // Update UI buttons
             document.querySelectorAll('.day-btn').forEach(btn => {
                 btn.classList.remove('text-white', 'border-white');
                 btn.classList.add('text-white/40', 'border-transparent');
@@ -532,13 +531,30 @@
             }
 
             dayData.forEach((item, index) => {
-                // Formatting time for clean UI
                 const timeParts = item.Time.split('-');
                 const startTime = timeParts[0] ? timeParts[0].trim() : '';
+                const endTime = timeParts[1] ? timeParts[1].trim() : '';
                 
+                let isCurrent = false;
+                if (AppState.currentActivity && 
+                    AppState.currentActivity.Activity === item.Activity && 
+                    AppState.currentActivity.Time === item.Time && 
+                    item.Day === AppState.currentActivity.Day) {
+                    isCurrent = true;
+                }
+
+                const borderClass = isCurrent ? 'border-yellow-400/50 shadow-[0_0_15px_rgba(250,204,21,0.1)]' : 'border-white/5 hover:border-white/20';
+                const bgClass = isCurrent ? 'bg-white/10' : 'bg-white/5';
+                const idAttr = isCurrent ? 'id="current-schedule-item"' : '';
+                const activeDot = isCurrent ? '<div class="absolute -left-1.5 top-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-yellow-400 rounded-full shadow-[0_0_5px_#facc15]"></div>' : '';
+
                 container.innerHTML += `
-                    <div class="flex items-center gap-4 bg-white/5 p-4 rounded-2xl border border-white/5 hover:border-white/20 transition-all cursor-default">
-                        <div class="text-[10px] font-black text-white/50 w-20 tracking-widest text-right shrink-0">${startTime}</div>
+                    <div ${idAttr} class="relative flex items-center gap-4 ${bgClass} p-4 rounded-2xl border ${borderClass} transition-all cursor-default ml-2">
+                        ${activeDot}
+                        <div class="text-center w-20 shrink-0">
+                            <div class="text-[10px] font-black text-white/70 tracking-widest">${startTime}</div>
+                            <div class="text-[8px] font-black text-white/30 tracking-widest mt-0.5">${endTime}</div>
+                        </div>
                         <div class="w-1 h-8 bg-white/10 rounded-full shrink-0"></div>
                         <div class="flex-1">
                             <div class="text-sm font-bold text-white uppercase tracking-wider">${item.Activity}</div>
@@ -547,9 +563,15 @@
                     </div>
                 `;
             });
+
+            setTimeout(() => {
+                const currentEl = document.getElementById('current-schedule-item');
+                if (currentEl) {
+                    currentEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }, 50);
         }
 
-        // --- PRIORITY MATRIX LOGIC ---
         async function loadPriorityTab() {
             const container = document.getElementById('priority-sliders');
             container.innerHTML = '<div class="text-center text-white/50 text-xs py-8 col-span-full animate-pulse">Scanning Schedule Data...</div>';
@@ -678,7 +700,6 @@
             btn.innerText = originalText;
         }
 
-        // --- ANALYTICS FIX ---
         async function fetchAnalytics() {
             const studyStat = document.getElementById('stat-study-hrs');
             studyStat.innerText = "..."; 
@@ -728,7 +749,6 @@
             data.chart.forEach((val, i) => { const height = Math.max(5, (val / maxVal) * 100); bars[i].style.height = height + "%"; bars[i].className = val > 0 ? "bg-white w-full rounded-t-lg chart-bar" : "bg-white/10 w-full rounded-t-lg chart-bar"; });
         }
 
-        // --- TAB SWITCHER UPDATED TO HANDLE 5 TABS ---
         function switchTab(view) {
             ['dashboard', 'schedule', 'priority', 'insights', 'analytics'].forEach(s => { 
                 document.getElementById(`view-${s}`).classList.add('hidden'); 
@@ -740,8 +760,8 @@
             if(view === 'analytics') fetchAnalytics();
             if(view === 'priority') loadPriorityTab();
             if(view === 'schedule') {
-                const today = new Date().toLocaleString('en-us', {  weekday: 'long' });
-                renderScheduleDay(today); // Auto-load today's day
+                const activeDay = (AppState.currentActivity && AppState.currentActivity.Day) ? AppState.currentActivity.Day : new Date().toLocaleString('en-us', {  weekday: 'long' });
+                renderScheduleDay(activeDay);
             }
         }
 
