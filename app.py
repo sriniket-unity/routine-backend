@@ -1,4 +1,4 @@
-# start of version v7.3.2 (Scoped Deletes & Day-Anchored Ripple)
+# start of version v7.3.3 (Gemini 3 Flash Preview Restored)
 from dotenv import load_dotenv
 load_dotenv()
 from flask import Flask, request, jsonify, Response, stream_with_context
@@ -84,7 +84,7 @@ cloud_state = { "state": "READY", "activity": None, "start_time": None, "accumul
 # --- 🌐 ENDPOINTS ---
 @app.route('/', methods=['GET'])
 def health():
-    return jsonify({"service": "Routine Flow Architect", "version": "7.3.2", "status": "Online"}), 200
+    return jsonify({"service": "Routine Flow Architect", "version": "7.3.3", "status": "Online"}), 200
 
 @app.route('/get_state', methods=['GET'])
 def get_state(): 
@@ -228,7 +228,8 @@ def chat():
         ACTION_RECS: [{{"action": "delete", "target": "Wind down", "reason": "Sacrificed low priority task for emergency"}}]
         """
         
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        # FIXED: Restored your proper preview model
+        model = genai.GenerativeModel('gemini-3-flash-preview')
         
         def generate():
             full_text = ""
@@ -257,7 +258,6 @@ def update_timetable():
         all_a_to_d = timetable_ws.get('A3:D150') 
         current_schedule = []
         
-        # 1. Map rows to exact days (Resolving Merged Cells)
         temp_day = "Monday"
         for r in all_a_to_d:
             if not r or (len(r) > 0 and r[0].strip().lower() == 'metric') or (len(r) > 2 and 'hours' in str(r[2]).lower()): 
@@ -278,7 +278,6 @@ def update_timetable():
         if now.hour < 8: cur_day_name = (now - timedelta(days=1)).strftime('%A')
         curMin = (now.hour * 60) + now.minute
 
-        # 2. Scoped Commands (Only affect current day)
         for cmd in data:
             action = cmd.get('action')
             target = cmd.get('target', '')
@@ -316,7 +315,6 @@ def update_timetable():
             if h12 == 0: h12 = 12
             return f"{h12:02d}:{m:02d} {ampm}"
 
-        # 3. Day-Anchored Ripple (Prevents pushing the whole week out of sync)
         if current_schedule:
             day_anchors = {}
             for row in current_schedule:
@@ -324,7 +322,7 @@ def update_timetable():
                 if day not in day_anchors:
                     times = row.get('Time', '').split('-')
                     if len(times) > 0: day_anchors[day] = parse_time_to_minutes(times[0])
-                    else: day_anchors[day] = 360 # Default 6 AM
+                    else: day_anchors[day] = 360 
 
             for day, anchor_mins in day_anchors.items():
                 current_minutes = anchor_mins
@@ -340,7 +338,6 @@ def update_timetable():
                         row['Duration'] = f"{int(duration_val) if duration_val.is_integer() else duration_val} {'hr' if duration_val == 1.0 else 'hrs'}"
 
         timetable_ws.batch_clear([f'A3:D{3 + original_length}'])
-        # Writes the flat DB back to sheets, unmerging visually to prevent glitches
         rows_to_update = [[row.get('Resolved_Day', ''), row.get('Time', ''), row.get('Activity', ''), row.get('Duration', '')] for row in current_schedule]
         if rows_to_update:
             timetable_ws.update(f'A3:D{2 + len(rows_to_update)}', rows_to_update)
@@ -487,4 +484,4 @@ def get_analytics():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
-# end of version v7.3.2
+# end of version v7.3.3

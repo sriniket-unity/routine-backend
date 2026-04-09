@@ -25,7 +25,7 @@
         .tab-active { color: white !important; border-bottom: 2px solid white !important; }
         .tab-inactive { color: rgba(255,255,255,0.3) !important; border-bottom: 2px solid transparent !important; }
         .chat-container { height: calc(100vh - 120px); scrollbar-width: none; }
-        .chat-bubble-ai { background: rgba(255,255,255,0.05); border-radius: 0 1.5rem 1.5rem 1.5rem; }
+        .chat-bubble-ai { background: rgba(255,255,255,0.05); border-radius: 0 1.5rem 1.5rem 1.5rem; transition: all 0.3s ease; }
         .chat-bubble-user { background: #FFFFFF; color: #000000; border-radius: 1.5rem 1.5rem 0 1.5rem; }
         .stat-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 1.5rem; padding: 1.5rem; }
         .chart-bar { transition: height 0.6s cubic-bezier(0.34, 1.56, 0.64, 1); }
@@ -229,7 +229,7 @@
             syncWithCloud();
 
             if(localChatHistory.length === 0) {
-                appendBubble('ai', "System: Memory Loaded. Architect Engine V7.3.2 (Scoped Ripple Logic) online.");
+                appendBubble('ai', "System: Memory Loaded. Architect Engine V7.3.3 (Stable Core) online.");
             } else {
                 localChatHistory.forEach(m => {
                     if (m.type === 'ai') processAIResponse(m.text);
@@ -417,6 +417,12 @@
 
             try {
                 const res = await fetch(`${BackendAPI}/chat`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ message: msg }) });
+                
+                // NEW: Robust Error Catching from Server
+                if (!res.ok) {
+                    throw new Error(`Server returned status ${res.status}`);
+                }
+                
                 const reader = res.body.getReader();
                 const decoder = new TextDecoder("utf-8");
                 let rawText = ""; let isFirstChunk = true;
@@ -433,14 +439,16 @@
                             if (dataStr === '[DONE]') break;
                             try {
                                 const parsed = JSON.parse(dataStr);
-                                if (parsed.error) throw new Error(parsed.error);
+                                if (parsed.error) throw new Error(parsed.error); // Catch AI JSON errors
                                 if (isFirstChunk) { bubbleElement.innerHTML = ''; isFirstChunk = false; }
                                 rawText += parsed.text;
                                 let displayHtml = rawText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
                                 bubbleElement.innerHTML = displayHtml;
                                 const win = document.getElementById('chat-window');
                                 win.scrollTop = win.scrollHeight;
-                            } catch (e) { }
+                            } catch (e) { 
+                                throw e; // Pass to outer catch block
+                            }
                         }
                     }
                 }
@@ -449,7 +457,16 @@
                 
                 bubbleElement.remove(); 
                 processAIResponse(rawText);
-            } catch(e) { document.getElementById(bubbleId).innerHTML = "Chat Offline."; showToast("Chat Offline", "error"); }
+                
+            } catch(e) { 
+                // NEW: Prevents the bubble from vanishing and shows the error in red
+                const el = document.getElementById(bubbleId);
+                if(el) {
+                    el.innerHTML = `⚠️ Architect Offline. <br><span class="text-[10px] text-white/50">${e.message}</span>`;
+                    el.classList.add('border', 'border-debt', 'text-debt');
+                }
+                showToast("Chat Connection Failed", "error"); 
+            }
         }
 
         function appendBubble(type, text, id = null) {
