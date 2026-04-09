@@ -201,7 +201,7 @@
             syncWithCloud();
 
             if(localChatHistory.length === 0) {
-                appendBubble('ai', "System: Memory Loaded. Architect Engine V6.2.4 (Priority Matrix Page) online.");
+                appendBubble('ai', "System: Memory Loaded. Architect Engine V7.0.1 (Stable UI) online.");
             } else {
                 localChatHistory.forEach(m => {
                     if (m.type === 'ai') processAIResponse(m.text);
@@ -481,13 +481,14 @@
             } catch (e) { showToast("Error Reverting", "error"); }
         }
 
-        // --- V6.2.4 FULL PAGE PRIORITY LOGIC ---
+        // --- V7.0.1 FULL PAGE PRIORITY LOGIC ---
         async function loadPriorityTab() {
             const container = document.getElementById('priority-sliders');
             container.innerHTML = '<div class="text-center text-white/50 text-xs py-8 col-span-full animate-pulse">Scanning Schedule Data...</div>';
             
             try {
                 const res = await fetch(`${BackendAPI}/get_priorities`);
+                if (!res.ok) throw new Error("Server error");
                 const data = await res.json();
                 if(data.status === 'success') {
                     AppState.priorities = data.data;
@@ -600,8 +601,6 @@
                 
                 if(res.ok) {
                     showToast("Matrix Synced", "success");
-                    // Optionally switch back to dashboard after saving
-                    // setTimeout(() => switchTab('dashboard'), 800);
                 } else {
                     showToast("Sync Failed", "error");
                 }
@@ -611,7 +610,56 @@
             btn.innerText = originalText;
         }
 
-        // --- TAB SWITCHER UPDATED TO HANDLE 4 TABS ---
+        // --- V7.0.1 ANALYTICS FIX ---
+        async function fetchAnalytics() {
+            const studyStat = document.getElementById('stat-study-hrs');
+            studyStat.innerText = "..."; // Visual Loading State
+            
+            try {
+                const res = await fetch(`${BackendAPI}/get_analytics`);
+                if (!res.ok) throw new Error("Server not ready");
+                const result = await res.json();
+                
+                if (result.status === "success") { 
+                    AppState.analyticsData = result; 
+                    toggleRange('week'); 
+                } else {
+                    throw new Error("Data Error");
+                }
+            } catch (e) { 
+                showToast("Analytics loading... wait a moment.", "error"); 
+                studyStat.innerText = "0.0";
+            }
+        }
+
+        function toggleRange(range) {
+            const w = document.getElementById('btn-week'), o = document.getElementById('btn-overall');
+            
+            w.className = range === 'week' ? "px-4 py-2 text-[10px] font-black uppercase rounded-lg bg-white text-black transition-all" : "px-4 py-2 text-[10px] font-black uppercase text-white/30 transition-all";
+            o.className = range === 'overall' ? "px-4 py-2 text-[10px] font-black uppercase rounded-lg bg-white text-black transition-all" : "px-4 py-2 text-[10px] font-black uppercase text-white/30 transition-all";
+            
+            const data = range === 'week' ? (AppState.analyticsData ? AppState.analyticsData.week : null) : (AppState.analyticsData ? AppState.analyticsData.overall : null);
+            
+            if(!data) return; // Safety exit if server isn't back yet
+            
+            document.getElementById('stat-study-hrs').innerText = data.study;
+            document.getElementById('study-progress-bar').style.width = Math.min(100, (data.study / 10) * 100) + "%";
+            const offset = 377 - (377 * data.adherence) / 100;
+            document.getElementById('adherence-circle').style.strokeDashoffset = offset;
+            document.getElementById('circle-pct').innerText = data.adherence + "%";
+
+            const debtList = document.getElementById('debt-list'); debtList.innerHTML = ''; 
+            if (!data.debts_by_activity || Object.keys(data.debts_by_activity).length === 0) { debtList.innerHTML = '<div class="text-center text-sm font-bold text-white/30 py-4">NO DEBT 🎉</div>'; } 
+            else {
+                for (const [activity, debtVal] of Object.entries(data.debts_by_activity)) { debtList.innerHTML += `<div class="flex justify-between items-center text-sm font-bold border-b border-white/5 pb-2"><span class="text-white/70">${activity}</span><span class="text-debt">${debtVal}</span></div>`; }
+                debtList.innerHTML += `<div class="flex justify-between items-center text-[10px] font-black uppercase pt-2 mt-2"><span class="text-white/40">Total</span><span class="text-debt text-xl">${data.total_debt}</span></div>`;
+            }
+            
+            const maxVal = Math.max(...data.chart, 1);
+            const bars = document.getElementById('chart-bars').children;
+            data.chart.forEach((val, i) => { const height = Math.max(5, (val / maxVal) * 100); bars[i].style.height = height + "%"; bars[i].className = val > 0 ? "bg-white w-full rounded-t-lg chart-bar" : "bg-white/10 w-full rounded-t-lg chart-bar"; });
+        }
+
         function switchTab(view) {
             ['dashboard', 'priority', 'insights', 'analytics'].forEach(s => { 
                 document.getElementById(`view-${s}`).classList.add('hidden'); 
