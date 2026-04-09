@@ -1,4 +1,4 @@
-# start of version v7.0.0 (Phase 4: The Weekly Mastermind)
+# start of version v7.1.0 (Phase 4: Full Schedule Data Endpoint)
 from dotenv import load_dotenv
 load_dotenv()
 from flask import Flask, request, jsonify, Response, stream_with_context
@@ -84,7 +84,7 @@ cloud_state = { "state": "READY", "activity": None, "start_time": None, "accumul
 # --- 🌐 ENDPOINTS ---
 @app.route('/', methods=['GET'])
 def health():
-    return jsonify({"service": "Routine Flow Architect", "version": "7.0.0", "status": "Online"}), 200
+    return jsonify({"service": "Routine Flow Architect", "version": "7.1.0", "status": "Online"}), 200
 
 @app.route('/get_state', methods=['GET'])
 def get_state(): 
@@ -103,14 +103,12 @@ def get_schedule():
         if not timetable_ws: init_sheets()
         if not timetable_ws: return jsonify({"status": "error", "message": "DB ERROR"}), 500
         
-        # V7.0.0 7-Day Parser
         all_val = timetable_ws.get_all_values()
         data = []
         current_day = "Monday"
         
         for r in all_val[2:]:
             if not r or str(r[0]).strip().lower() == 'metric' or (len(r) > 2 and 'hours' in str(r[2]).lower()): break
-            
             if str(r[0]).strip(): current_day = str(r[0]).strip()
             while len(r) < 4: r.append('')
             
@@ -118,16 +116,13 @@ def get_schedule():
             if time_str and act_str:
                 data.append({ "Day": current_day, "Time": time_str, "Activity": act_str, "Duration": dur_str })
 
-        # Logical Today Calculator (Handles 8 AM shift)
         now = datetime.now(IST)
         cur_day_name = now.strftime('%A')
         curMin = (now.hour * 60) + now.minute
-        
-        if now.hour < 8:
-            cur_day_name = (now - timedelta(days=1)).strftime('%A')
+        if now.hour < 8: cur_day_name = (now - timedelta(days=1)).strftime('%A')
 
         today_data = [item for item in data if item['Day'] == cur_day_name]
-        if not today_data: today_data = data # Fallback
+        if not today_data: today_data = data 
 
         cur_session = None
         for item in today_data:
@@ -138,11 +133,13 @@ def get_schedule():
                 cur_session = item; break
                 
         if not cur_session:
-            return jsonify({"status": "success", "data": today_data, "cur": {"Activity": "BREAK", "Duration": "1"}, "prev": {"Activity": "---"}, "next": {"Activity": "---"}})
+            return jsonify({"status": "success", "data": today_data, "full_data": data, "cur": {"Activity": "BREAK", "Duration": "1"}, "prev": {"Activity": "---"}, "next": {"Activity": "---"}})
         
         idx = today_data.index(cur_session)
         return jsonify({
-            "status": "success", "data": today_data,
+            "status": "success", 
+            "data": today_data,
+            "full_data": data, 
             "prev": today_data[idx-1] if idx > 0 else today_data[-1],
             "cur": cur_session,
             "next": today_data[idx+1] if idx < len(today_data)-1 else today_data[0]
@@ -160,7 +157,6 @@ def chat():
         if not chat_logs_ws: init_sheets()
         user_msg = request.json.get('message')
         
-        # 1. 7-Day Schedule Mapping
         all_tt = timetable_ws.get_all_values()
         timetable_data = []
         current_day = "Monday"
@@ -188,7 +184,6 @@ def chat():
                         cur_idx = i
                         break
         
-        # Pull the exact next 15 blocks spanning across days
         lean_tt = []
         if len(timetable_data) > 0:
             for i in range(15):
@@ -258,9 +253,7 @@ def update_timetable():
         data = request.json
         if not snapshot_ws: init_sheets()
         
-        # V7.0.0 Safe Ripple Write (Preserves Column A structure)
         all_a_to_d = timetable_ws.get('A3:D150') 
-        
         current_schedule = []
         for r in all_a_to_d:
             if not r or (len(r) > 0 and r[0].strip().lower() == 'metric') or (len(r) > 2 and 'hours' in str(r[2]).lower()): 
@@ -282,8 +275,6 @@ def update_timetable():
             elif cmd.get('action') == 'insert':
                 now = datetime.now(IST)
                 curMin = (now.hour * 60) + now.minute
-                
-                # Insert at current logical block
                 insert_idx = len(current_schedule)
                 cur_day_name = now.strftime('%A')
                 if now.hour < 8: cur_day_name = (now - timedelta(days=1)).strftime('%A')
@@ -315,7 +306,6 @@ def update_timetable():
             return f"{h12:02d}:{m:02d} {ampm}"
 
         if current_schedule:
-            # Re-ripple times starting from the very first item
             first_time = current_schedule[0].get('Time', '').split('-')[0].strip()
             current_minutes = parse_time_to_minutes(first_time)
             for row in current_schedule:
@@ -475,4 +465,4 @@ def get_analytics():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
-# end of version v7.0.0
+# end of version v7.1.0
