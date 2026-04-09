@@ -1,4 +1,4 @@
-# start of version v6.2.0 (Phase 3: Sacrifice Math AI Integration)
+# start of version v7.0.0 (Phase 4: The Weekly Mastermind)
 from dotenv import load_dotenv
 load_dotenv()
 from flask import Flask, request, jsonify, Response, stream_with_context
@@ -38,20 +38,15 @@ def init_sheets():
             timetable_ws = sheet.worksheet("Timetable")
             logs_ws = sheet.worksheet("Logs")
             chat_logs_ws = sheet.worksheet("ChatLogs")
-            
             try: snapshot_ws = sheet.worksheet("Snapshot")
             except: snapshot_ws = None
-
             try: priority_ws = sheet.worksheet("Priority")
             except: priority_ws = None
-
             app.logger.info("✅ Sheets Status: Gemini Systems Synchronized.")
             return True
         else:
-            app.logger.error("❌ CRITICAL: GOOGLE_SHEETS_CREDS_JSON is missing.")
             return False
     except Exception as e:
-        app.logger.error(f"❌ Sheets Error: {e}")
         return False
 
 init_sheets()
@@ -84,17 +79,12 @@ def safe_float(val):
     except: return 0.0
 
 # --- ☁️ CLOUD SYNC STATE ---
-cloud_state = {
-    "state": "READY",
-    "activity": None,
-    "start_time": None,
-    "accumulated_seconds": 0 
-}
+cloud_state = { "state": "READY", "activity": None, "start_time": None, "accumulated_seconds": 0 }
 
 # --- 🌐 ENDPOINTS ---
 @app.route('/', methods=['GET'])
 def health():
-    return jsonify({"service": "Routine Flow Architect", "version": "6.2.0", "status": "Online"}), 200
+    return jsonify({"service": "Routine Flow Architect", "version": "7.0.0", "status": "Online"}), 200
 
 @app.route('/get_state', methods=['GET'])
 def get_state(): 
@@ -112,33 +102,50 @@ def get_schedule():
     try:
         if not timetable_ws: init_sheets()
         if not timetable_ws: return jsonify({"status": "error", "message": "DB ERROR"}), 500
-        all_val = timetable_ws.get_all_values()
-        headers = [h.strip() for h in all_val[1] if h.strip()] 
         
+        # V7.0.0 7-Day Parser
+        all_val = timetable_ws.get_all_values()
         data = []
+        current_day = "Monday"
+        
         for r in all_val[2:]:
-            if not r or r[0].strip().lower() == 'metric' or (len(r) > 1 and 'hours' in str(r[1]).lower()): 
-                break
-            if any(r): 
-                data.append(dict(zip(headers, r)))
+            if not r or str(r[0]).strip().lower() == 'metric' or (len(r) > 2 and 'hours' in str(r[2]).lower()): break
+            
+            if str(r[0]).strip(): current_day = str(r[0]).strip()
+            while len(r) < 4: r.append('')
+            
+            time_str, act_str, dur_str = str(r[1]).strip(), str(r[2]).strip(), str(r[3]).strip()
+            if time_str and act_str:
+                data.append({ "Day": current_day, "Time": time_str, "Activity": act_str, "Duration": dur_str })
 
+        # Logical Today Calculator (Handles 8 AM shift)
         now = datetime.now(IST)
+        cur_day_name = now.strftime('%A')
         curMin = (now.hour * 60) + now.minute
+        
+        if now.hour < 8:
+            cur_day_name = (now - timedelta(days=1)).strftime('%A')
+
+        today_data = [item for item in data if item['Day'] == cur_day_name]
+        if not today_data: today_data = data # Fallback
+
         cur_session = None
-        for item in data:
+        for item in today_data:
             times = item.get('Time', '').split('-')
             if len(times) != 2: continue
             s, e = parse_time_to_minutes(times[0]), parse_time_to_minutes(times[1])
             if (e < s and (curMin >= s or curMin < e)) or (s <= curMin < e):
                 cur_session = item; break
+                
         if not cur_session:
-            return jsonify({"status": "success", "data": data, "cur": {"Activity": "BREAK", "Duration": "1"}, "prev": {"Activity": "---"}, "next": {"Activity": "---"}})
-        idx = data.index(cur_session)
+            return jsonify({"status": "success", "data": today_data, "cur": {"Activity": "BREAK", "Duration": "1"}, "prev": {"Activity": "---"}, "next": {"Activity": "---"}})
+        
+        idx = today_data.index(cur_session)
         return jsonify({
-            "status": "success", "data": data,
-            "prev": data[idx-1] if idx > 0 else data[-1],
+            "status": "success", "data": today_data,
+            "prev": today_data[idx-1] if idx > 0 else today_data[-1],
             "cur": cur_session,
-            "next": data[idx+1] if idx < len(data)-1 else data[0]
+            "next": today_data[idx+1] if idx < len(today_data)-1 else today_data[0]
         })
     except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -153,69 +160,77 @@ def chat():
         if not chat_logs_ws: init_sheets()
         user_msg = request.json.get('message')
         
-        # 1. Fetch Schedule
+        # 1. 7-Day Schedule Mapping
         all_tt = timetable_ws.get_all_values()
-        tt_headers = [h.strip() for h in all_tt[1] if h.strip()] if len(all_tt) > 1 else []
         timetable_data = []
+        current_day = "Monday"
         for r in all_tt[2:]:
-            if not r or r[0].strip().lower() == 'metric': break
-            if any(r): timetable_data.append(dict(zip(tt_headers, r)))
+            if not r or str(r[0]).strip().lower() == 'metric': break
+            if str(r[0]).strip(): current_day = str(r[0]).strip()
+            while len(r) < 4: r.append('')
+            if str(r[1]).strip() and str(r[2]).strip():
+                timetable_data.append({ "Day": current_day, "Time": str(r[1]).strip(), "Activity": str(r[2]).strip(), "Duration": str(r[3]).strip() })
             
-        lean_tt = timetable_data[-15:] # Give AI a bit more context for rescheduling
+        now = datetime.now(IST)
+        cur_day_name = now.strftime('%A')
+        curMin = (now.hour * 60) + now.minute
+        if now.hour < 8: cur_day_name = (now - timedelta(days=1)).strftime('%A')
+
+        cur_idx = 0
+        cur_activity = "Unknown"
+        for i, item in enumerate(timetable_data):
+            if item['Day'] == cur_day_name:
+                times = item.get('Time', '').split('-')
+                if len(times) == 2:
+                    s, e = parse_time_to_minutes(times[0]), parse_time_to_minutes(times[1])
+                    if (e < s and (curMin >= s or curMin < e)) or (s <= curMin < e):
+                        cur_activity = item.get('Activity', 'Unknown')
+                        cur_idx = i
+                        break
         
-        # 2. Fetch Memory
+        # Pull the exact next 15 blocks spanning across days
+        lean_tt = []
+        if len(timetable_data) > 0:
+            for i in range(15):
+                lean_tt.append(timetable_data[(cur_idx + i) % len(timetable_data)])
+
         all_chat = chat_logs_ws.get_all_values()
         memory = [dict(zip([h.strip() for h in all_chat[0]], r)) for r in all_chat[1:] if any(r)][-6:] if len(all_chat) > 1 else []
             
-        # 3. Fetch Live Clock
-        now = datetime.now(IST)
-        cur_time_str = now.strftime('%I:%M %p')
-        curMin = (now.hour * 60) + now.minute
-        cur_activity = "Unknown"
-        for item in timetable_data:
-            times = item.get('Time', '').split('-')
-            if len(times) == 2:
-                s, e = parse_time_to_minutes(times[0]), parse_time_to_minutes(times[1])
-                if (e < s and (curMin >= s or curMin < e)) or (s <= curMin < e):
-                    cur_activity = item.get('Activity', 'Unknown')
-                    break
-        
-        # 4. NEW: Fetch Priority Matrix Scores
         user_priorities = {}
         if priority_ws:
             p_data = priority_ws.get_all_values()
             for r in p_data:
-                if len(r) >= 2 and r[0].strip():
-                    user_priorities[r[0].strip()] = int(safe_float(r[1]))
+                if len(r) >= 2 and r[0].strip(): user_priorities[r[0].strip()] = int(safe_float(r[1]))
                     
         prompt = f"""
         System: You are 'Routine Flow Architect', an elite AI assistant for Sriniket.
         Context: Sriniket is recovering from a bike accident.
-        REAL-TIME STATUS: It is currently {cur_time_str}. The user's active current session is '{cur_activity}'.
+        REAL-TIME STATUS: Today is officially {cur_day_name}. It is currently {now.strftime('%I:%M %p')}. Active session: '{cur_activity}'.
         
         USER PRIORITY MATRIX (0-10 Scale):
         {json.dumps(user_priorities)}
         
-        Schedule Context (Next 15 Blocks): {json.dumps(lean_tt)}
+        Upcoming 7-Day Schedule Context (Next 15 Blocks): {json.dumps(lean_tt)}
         Memory: {json.dumps(memory)}
         
         CRITICAL INSTRUCTIONS - SACRIFICE MATH: 
-        If the user asks to insert a new activity (like an emergency or sudden task), you MUST resolve the time conflict using their Priority Matrix:
-        1. Expendable (Score 0-3): Target these activities FIRST for deletion (e.g., Wind down, Break) to make room.
-        2. Flexible (Score 4-7): You may shrink their duration (using 'modify' action) to absorb the new time impact.
-        3. Vital (Score 8-10): NEVER delete or shrink these activities (e.g., Sleep, Gym, main Study). You must preserve them at all costs.
+        If the user asks to insert a new activity, resolve the time conflict using their Priority Matrix:
+        1. Expendable (Score 0-3): Target these FIRST for deletion.
+        2. Flexible (Score 4-7): Shrink their duration to absorb impact.
+        3. Vital (Score 8-10): NEVER delete or shrink these activities. Preserve at all costs.
         
         Valid Actions for ACTION_RECS JSON Array:
         - "modify": Changes duration of an existing activity. (Requires "target", "new_val", "reason")
         - "delete": Removes an activity entirely. (Requires "target", "reason")
         - "insert": Adds a brand new activity at the current time. (Requires "activity", "duration", "reason")
         
-        DURATION RULE: ALL durations MUST be a float followed by 'h' (e.g., "0.5h", "2.0h"). 
+        DURATION RULE: ALL durations MUST be a float followed by 'h' (e.g., "0.5h"). 
         
         User Input: {user_msg}
         
         Mandatory Format (Use ONLY if making schedule changes. Must be valid JSON array):
-        ACTION_RECS: [{{"action": "delete", "target": "Wind down", "reason": "Sacrificed low priority task for emergency"}}, {{"action": "insert", "activity": "Doctor", "duration": "2.0h", "reason": "Checkup"}}]
+        ACTION_RECS: [{{"action": "delete", "target": "Wind down", "reason": "Sacrificed low priority task for emergency"}}]
         """
         model = genai.GenerativeModel('gemini-3-flash-preview')
         
@@ -243,19 +258,21 @@ def update_timetable():
         data = request.json
         if not snapshot_ws: init_sheets()
         
-        all_b_to_d = timetable_ws.get('B3:D100') 
+        # V7.0.0 Safe Ripple Write (Preserves Column A structure)
+        all_a_to_d = timetable_ws.get('A3:D150') 
         
         current_schedule = []
-        for r in all_b_to_d:
-            if not r or len(r) == 0 or r[0].strip() == '' or 'Hours' in r: break
-            while len(r) < 3: r.append('')
-            current_schedule.append({"Time": r[0], "Activity": r[1], "Duration": r[2]})
+        for r in all_a_to_d:
+            if not r or (len(r) > 0 and r[0].strip().lower() == 'metric') or (len(r) > 2 and 'hours' in str(r[2]).lower()): 
+                break
+            while len(r) < 4: r.append('')
+            current_schedule.append({"Day_Cell": r[0], "Time": r[1], "Activity": r[2], "Duration": r[3]})
             
         original_length = len(current_schedule)
         
         if snapshot_ws:
              snapshot_ws.clear()
-             snapshot_data = [[row.get('Time', ''), row.get('Activity', ''), row.get('Duration', '')] for row in current_schedule]
+             snapshot_data = [[row.get('Day_Cell', ''), row.get('Time', ''), row.get('Activity', ''), row.get('Duration', '')] for row in current_schedule]
              if snapshot_data:
                  snapshot_ws.append_rows(snapshot_data)
 
@@ -265,15 +282,23 @@ def update_timetable():
             elif cmd.get('action') == 'insert':
                 now = datetime.now(IST)
                 curMin = (now.hour * 60) + now.minute
+                
+                # Insert at current logical block
                 insert_idx = len(current_schedule)
+                cur_day_name = now.strftime('%A')
+                if now.hour < 8: cur_day_name = (now - timedelta(days=1)).strftime('%A')
+                
+                temp_day = "Monday"
                 for idx, item in enumerate(current_schedule):
-                    times = item.get('Time', '').split('-')
-                    if len(times) == 2:
-                        s = parse_time_to_minutes(times[0])
-                        if s > curMin:
-                            insert_idx = idx
-                            break
-                new_block = {"Time": "TBD", "Activity": cmd.get("activity"), "Duration": cmd.get("duration").replace('h', '')}
+                    if item['Day_Cell'].strip(): temp_day = item['Day_Cell'].strip()
+                    if temp_day == cur_day_name:
+                        times = item.get('Time', '').split('-')
+                        if len(times) == 2:
+                            s = parse_time_to_minutes(times[0])
+                            if s > curMin:
+                                insert_idx = idx
+                                break
+                new_block = {"Day_Cell": "", "Time": "TBD", "Activity": cmd.get("activity"), "Duration": cmd.get("duration").replace('h', '')}
                 current_schedule.insert(insert_idx, new_block)
             elif cmd.get('action') == 'modify':
                  for row in current_schedule:
@@ -290,6 +315,7 @@ def update_timetable():
             return f"{h12:02d}:{m:02d} {ampm}"
 
         if current_schedule:
+            # Re-ripple times starting from the very first item
             first_time = current_schedule[0].get('Time', '').split('-')[0].strip()
             current_minutes = parse_time_to_minutes(first_time)
             for row in current_schedule:
@@ -302,12 +328,10 @@ def update_timetable():
                 row['Time'] = f"{start_str} - {end_str}"
                 row['Duration'] = f"{int(duration_val) if duration_val.is_integer() else duration_val} {'hr' if duration_val == 1.0 else 'hrs'}"
 
-        timetable_ws.batch_clear([f'B3:D{3 + original_length}'])
-        rows_to_update = []
-        for row in current_schedule:
-             rows_to_update.append([row.get('Time', ''), row.get('Activity', ''), row.get('Duration', '')])
+        timetable_ws.batch_clear([f'A3:D{3 + original_length}'])
+        rows_to_update = [[row.get('Day_Cell', ''), row.get('Time', ''), row.get('Activity', ''), row.get('Duration', '')] for row in current_schedule]
         if rows_to_update:
-            timetable_ws.update(f'B3:D{2 + len(rows_to_update)}', rows_to_update)
+            timetable_ws.update(f'A3:D{2 + len(rows_to_update)}', rows_to_update)
 
         return jsonify({"status": "success", "message": "Ripple effect applied."}), 200
     except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
@@ -316,20 +340,16 @@ def update_timetable():
 def revert_timetable():
     try:
         if not snapshot_ws: init_sheets()
-        if not snapshot_ws:
-             return jsonify({"status": "error", "message": "Snapshot worksheet missing."}), 500
+        if not snapshot_ws: return jsonify({"status": "error", "message": "Snapshot worksheet missing."}), 500
 
         snapshot_data = snapshot_ws.get_all_values()
-        if not snapshot_data:
-            return jsonify({"status": "error", "message": "No snapshot data found."}), 400
+        if not snapshot_data: return jsonify({"status": "error", "message": "No snapshot data found."}), 400
             
-        original_length = len(timetable_ws.get('B3:D100'))
-        timetable_ws.batch_clear([f'B3:D{3 + original_length}'])
-             
-        if snapshot_data:
-            timetable_ws.update(f'B3:D{2 + len(snapshot_data)}', snapshot_data)
-
+        original_length = len(timetable_ws.get('A3:D150'))
+        timetable_ws.batch_clear([f'A3:D{3 + original_length}'])
+        if snapshot_data: timetable_ws.update(f'A3:D{2 + len(snapshot_data)}', snapshot_data)
         snapshot_ws.clear()
+        
         return jsonify({"status": "success", "message": "Reverted successfully."}), 200
     except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -340,11 +360,9 @@ def get_priorities():
         
         all_tt = timetable_ws.get_all_values()
         unique_activities = set()
-        
         if len(all_tt) > 2:
             headers = [h.strip() for h in all_tt[1]]
             act_idx = headers.index('Activity') if 'Activity' in headers else 2
-            
             for r in all_tt[2:]:
                 if not r or r[0].strip().lower() == 'metric' or 'hours' in str(r).lower(): break
                 if len(r) > act_idx and str(r[act_idx]).strip():
@@ -356,32 +374,24 @@ def get_priorities():
         if priority_ws:
             p_data = priority_ws.get_all_values()
             for r in p_data:
-                if len(r) >= 2 and r[0].strip():
-                    saved_priorities[r[0].strip()] = int(safe_float(r[1]))
+                if len(r) >= 2 and r[0].strip(): saved_priorities[r[0].strip()] = int(safe_float(r[1]))
                     
         final_priorities = {}
-        for act in unique_activities:
-            final_priorities[act] = saved_priorities.get(act, 5) 
-            
+        for act in unique_activities: final_priorities[act] = saved_priorities.get(act, 5) 
         return jsonify({"status": "success", "data": final_priorities}), 200
-    except Exception as e: 
-        return jsonify({"status": "error", "message": str(e)}), 500
+    except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/save_priorities', methods=['POST'])
 def save_priorities():
     try:
         data = request.json
         if not priority_ws: init_sheets()
-        
         if priority_ws:
             priority_ws.clear()
             rows = [[k, v] for k, v in data.items()]
-            if rows:
-                priority_ws.append_rows(rows)
-                
+            if rows: priority_ws.append_rows(rows)
         return jsonify({"status": "success", "message": "Priorities synced to cloud."}), 200
-    except Exception as e: 
-        return jsonify({"status": "error", "message": str(e)}), 500
+    except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/log_session', methods=['POST'])
 def log_session():
@@ -392,16 +402,6 @@ def log_session():
         return jsonify({"status": "success"}), 200
     except Exception as e: return jsonify({"status": "error"}), 500
 
-@app.route('/bulk_log', methods=['POST'])
-def bulk_log():
-    try:
-        if not logs_ws: init_sheets()
-        data = request.json
-        rows = [[datetime.now(IST).strftime('%Y-%m-%d %H:%M'), d.get('activity'), d.get('planned_duration'), d.get('actual_duration'), d.get('time_debt', 0)] for d in data]
-        logs_ws.append_rows(rows)
-        return jsonify({"status": "success", "inserted": len(rows)}), 200
-    except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
-
 @app.route('/clear_chat', methods=['DELETE'])
 def clear_chat():
     try:
@@ -410,15 +410,6 @@ def clear_chat():
         if len(records) > 1: chat_logs_ws.delete_rows(2, len(records))
         return jsonify({"status": "success"}), 200
     except Exception as e: return jsonify({"status": "error"}), 500
-
-@app.route('/clear_logs', methods=['DELETE'])
-def clear_logs():
-    try:
-        if not logs_ws: init_sheets()
-        records = logs_ws.get_all_values()
-        if len(records) > 1: logs_ws.delete_rows(2, len(records))
-        return jsonify({"status": "success"}), 200
-    except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/get_analytics', methods=['GET'])
 def get_analytics():
@@ -458,8 +449,7 @@ def get_analytics():
                 if act_name == "Study": total_study += actual_val
                 total_debt += debt_val
                 
-                if debt_val > 0:
-                    debts_by_activity[act_name] = round(debts_by_activity.get(act_name, 0) + debt_val, 1)
+                if debt_val > 0: debts_by_activity[act_name] = round(debts_by_activity.get(act_name, 0) + debt_val, 1)
                     
             completed = sum(1 for r in valid_rows if safe_float(r.get(act_k)) > 0)
             adherence = round((completed / len(valid_rows)) * 100)
@@ -468,33 +458,21 @@ def get_analytics():
             for r in valid_rows:
                 try:
                     dt = datetime.strptime(sanitize_ts(r.get(ts_k, '')), '%Y-%m-%d %H:%M')
-                    if "study" in str(r.get(name_k, '')).lower():
-                        chart[dt.weekday()] += safe_float(r.get(act_k))
+                    if "study" in str(r.get(name_k, '')).lower(): chart[dt.weekday()] += safe_float(r.get(act_k))
                 except: continue
                 
-            return {
-                "study": round(total_study, 1), 
-                "adherence": adherence, 
-                "total_debt": round(total_debt, 1), 
-                "debts_by_activity": debts_by_activity, 
-                "chart": chart
-            }
+            return { "study": round(total_study, 1), "adherence": adherence, "total_debt": round(total_debt, 1), "debts_by_activity": debts_by_activity, "chart": chart }
 
         week_logs = []
         ts_key = next((k for k in all_logs[0].keys() if 'time' in k.lower() or 'stamp' in k.lower()), None)
         for r in all_logs:
             try:
-                if IST.localize(datetime.strptime(sanitize_ts(r.get(ts_key, '')), '%Y-%m-%d %H:%M')) >= start_of_week:
-                    week_logs.append(r)
+                if IST.localize(datetime.strptime(sanitize_ts(r.get(ts_key, '')), '%Y-%m-%d %H:%M')) >= start_of_week: week_logs.append(r)
             except: continue
             
-        return jsonify({
-            "status": "success", 
-            "overall": process_subset(all_logs), 
-            "week": process_subset(week_logs)
-        }), 200
+        return jsonify({ "status": "success", "overall": process_subset(all_logs), "week": process_subset(week_logs) }), 200
     except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
-# end of version v6.2.0
+# end of version v7.0.0
