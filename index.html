@@ -3,11 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Routine Flow | Architect</title>
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23050505'/><text x='50%' y='50%' font-family='sans-serif' font-weight='900' font-style='italic' font-size='48' fill='%23FFFFFF' text-anchor='middle' dy='.35em'>RF</text></svg>">
     
+    <title>Routine Flow | Architect</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#000000">
+    <link rel="apple-touch-icon" href="https://raw.githubusercontent.com/google/material-design-icons/master/png/action/schedule/materialicons/512dp/2x/baseline_schedule_white_512dp.png">
+    
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23050505'/><text x='50%' y='50%' font-family='sans-serif' font-weight='900' font-style='italic' font-size='48' fill='%23FFFFFF' text-anchor='middle' dy='.35em'>RF</text></svg>">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono:wght@700&family=Outfit:wght@800&display=swap" rel="stylesheet">
+    
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js').then(reg => {
+                    console.log('ServiceWorker registered:', reg.scope);
+                }).catch(err => console.log('ServiceWorker error:', err));
+            });
+        }
+    </script>
+
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -36,7 +52,12 @@
         .typing-dot:nth-child(2) { animation-delay: -0.16s; }
         @keyframes typing { 0%, 80%, 100% { transform: scale(0); opacity: 0.3; } 40% { transform: scale(1); opacity: 1; } }
 
-        /* Custom Range Slider */
+        @keyframes slideUpFade {
+            from { opacity: 0; transform: translateY(15px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .chat-animate { animation: slideUpFade 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
         input[type=range] { -webkit-appearance: none; appearance: none; background: transparent; outline: none; }
         input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; height: 16px; width: 16px; border-radius: 50%; background: #ffffff; cursor: pointer; margin-top: -6px; box-shadow: 0 0 10px rgba(255,255,255,0.5); }
         input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: rgba(255,255,255,0.2); border-radius: 2px; }
@@ -89,7 +110,6 @@
 
         <section id="view-schedule" class="hidden p-6 max-w-4xl mx-auto">
             <div class="glass-panel border border-white/10 rounded-3xl p-8 mb-8 shadow-2xl">
-                
                 <div class="flex justify-between items-center mb-8 border-b border-white/10 pb-4 overflow-x-auto gap-6 hide-scrollbar">
                     <button onclick="renderScheduleDay('Monday')" class="day-btn text-white/40 hover:text-white font-black uppercase tracking-widest text-[10px] pb-2 border-b-2 border-transparent transition whitespace-nowrap" id="btn-day-Monday">MON</button>
                     <button onclick="renderScheduleDay('Tuesday')" class="day-btn text-white/40 hover:text-white font-black uppercase tracking-widest text-[10px] pb-2 border-b-2 border-transparent transition whitespace-nowrap" id="btn-day-Tuesday">TUE</button>
@@ -99,11 +119,9 @@
                     <button onclick="renderScheduleDay('Saturday')" class="day-btn text-white/40 hover:text-white font-black uppercase tracking-widest text-[10px] pb-2 border-b-2 border-transparent transition whitespace-nowrap" id="btn-day-Saturday">SAT</button>
                     <button onclick="renderScheduleDay('Sunday')" class="day-btn text-white/40 hover:text-white font-black uppercase tracking-widest text-[10px] pb-2 border-b-2 border-transparent transition whitespace-nowrap" id="btn-day-Sunday">SUN</button>
                 </div>
-
                 <div id="schedule-timeline" class="space-y-4 max-h-[60vh] overflow-y-auto pr-4 hide-scrollbar pb-10 relative">
                     <div class="text-center text-white/30 text-xs font-bold py-10">Fetching Master Schedule...</div>
                 </div>
-
             </div>
         </section>
 
@@ -123,10 +141,8 @@
                         </div>
                     </div>
                 </div>
-
                 <div id="priority-sliders" class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                    </div>
-
+                </div>
                 <div class="flex justify-end pt-4 border-t border-white/10">
                     <button onclick="savePriorities(event)" class="px-10 bg-white text-black py-4 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-gray-200 active:scale-95 transition-all shadow-[0_0_20px_rgba(255,255,255,0.2)]">
                         Save & Sync Matrix
@@ -225,7 +241,7 @@
             syncWithCloud();
 
             if(localChatHistory.length === 0) {
-                appendBubble('ai', "System: Memory Loaded. Architect Engine V7.1.1 (Schedule Highlight) online.");
+                appendBubble('ai', "System: Memory Loaded. Architect Engine V7.3.0 (Native PWA Core) online.");
             } else {
                 localChatHistory.forEach(m => {
                     if (m.type === 'ai') processAIResponse(m.text);
@@ -233,6 +249,36 @@
                 });
             }
         });
+
+        // DOPAMINE PROTOCOLS
+        function triggerCheckoutCelebration() {
+            confetti({
+                particleCount: 150,
+                spread: 80,
+                origin: { y: 0.6 },
+                colors: ['#facc15', '#4ade80', '#ffffff']
+            });
+
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                const ctx = new AudioContext();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(523.25, ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(880.00, ctx.currentTime + 0.1);
+                
+                gain.gain.setValueAtTime(0.3, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
+                
+                osc.start(ctx.currentTime);
+                osc.stop(ctx.currentTime + 0.5);
+            } catch(e) {}
+        }
 
         function updateHeaderClock() {
             document.getElementById('header-live-clock').innerText = new Date().toLocaleTimeString('en-US', { hour12: true, hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -357,11 +403,15 @@
             const plannedDurationHrs = parseFloat(AppState.currentActivity.Duration);
             const timeDebt = Math.max(0, plannedDurationHrs - actualDurationHrs);
             localStorage.removeItem('routine_timer_start'); localStorage.removeItem('routine_timer_activity'); localStorage.removeItem('routine_timer_accumulated');
+            
             event.target.innerText = "Saving...";
+            triggerCheckoutCelebration();
+
             try {
                 await fetch(`${BackendAPI}/log_session`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ activity: AppState.currentActivity.Activity, planned_duration: plannedDurationHrs, actual_duration: actualDurationHrs, time_debt: timeDebt }) }); 
                 await fetch(`${BackendAPI}/set_state`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ state: 'READY', activity: null, start_time: null, accumulated_seconds: 0 }) });
-                location.reload(); 
+                
+                setTimeout(() => location.reload(), 1500); 
             } catch(e) { event.target.innerText = "Check-Out"; }
         }
 
@@ -408,7 +458,9 @@
                 }
                 localChatHistory.push({type: 'user', text: msg}, {type: 'ai', text: rawText});
                 localStorage.setItem('routine_chat_cache', JSON.stringify(localChatHistory.slice(-20)));
-                bubbleElement.remove(); processAIResponse(rawText);
+                
+                bubbleElement.remove(); 
+                processAIResponse(rawText);
             } catch(e) { document.getElementById(bubbleId).innerHTML = "Chat Offline."; showToast("Chat Offline", "error"); }
         }
 
@@ -416,9 +468,10 @@
             const win = document.getElementById('chat-window');
             const div = document.createElement('div');
             if(id) div.id = id;
-            div.className = type === 'ai' ? 'chat-bubble-ai p-5 max-w-[85%] text-sm leading-relaxed self-start animate-in fade-in slide-in-from-left-2 shadow-xl' : 'chat-bubble-user p-5 max-w-[85%] text-sm leading-relaxed self-end ml-auto animate-in fade-in slide-in-from-right-2 shadow-xl';
+            div.className = type === 'ai' ? 'chat-bubble-ai p-5 max-w-[85%] text-sm leading-relaxed self-start shadow-xl chat-animate' : 'chat-bubble-user p-5 max-w-[85%] text-sm leading-relaxed self-end ml-auto shadow-xl chat-animate';
             div.innerHTML = text.includes('typing-dot') ? text : text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
-            win.appendChild(div); win.scrollTop = win.scrollHeight;
+            win.appendChild(div); 
+            win.scrollTop = win.scrollHeight;
         }
 
         async function clearChatHistory() {
@@ -449,7 +502,7 @@
             const win = document.getElementById('chat-window');
             const cardId = 'card-' + Date.now() + Math.floor(Math.random() * 1000);
             const div = document.createElement('div'); div.id = cardId;
-            div.className = "stat-card border-white/20 p-6 space-y-4 max-w-[85%] animate-in zoom-in-95 self-start ml-4 mt-2 shadow-xl";
+            div.className = "stat-card border-white/20 p-6 space-y-4 max-w-[85%] self-start ml-4 mt-2 shadow-xl chat-animate";
             let changesHtml = actions.map(act => {
                 if(act.action === 'delete') return `<li class="text-debt">❌ Delete: ${act.target} <br><span class="text-[9px] text-white/40 italic">"${act.reason}"</span></li>`;
                 if(act.action === 'insert') return `<li class="text-green-400">➕ Insert: ${act.activity} (${act.duration}) <br><span class="text-[9px] text-white/40 italic">"${act.reason}"</span></li>`;
@@ -508,7 +561,6 @@
             } catch (e) { showToast("Error Reverting", "error"); }
         }
 
-        // --- V7.1.1 SCHEDULE VISUALIZER AUTO-SCROLL LOGIC ---
         function renderScheduleDay(dayName) {
             document.querySelectorAll('.day-btn').forEach(btn => {
                 btn.classList.remove('text-white', 'border-white');
