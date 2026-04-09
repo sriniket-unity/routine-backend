@@ -1,4 +1,4 @@
-# start of version v8.0.0 (MongoDB Enterprise Core)
+# start of version v8.1.0 (MongoDB Collection Rename)
 from dotenv import load_dotenv
 load_dotenv()
 from flask import Flask, request, jsonify, Response, stream_with_context
@@ -86,7 +86,7 @@ def get_cloud_state():
 # --- 🌐 ENDPOINTS ---
 @app.route('/', methods=['GET'])
 def health():
-    return jsonify({"service": "Routine Flow Architect", "version": "8.0.0", "status": "Online (MongoDB Core)"}), 200
+    return jsonify({"service": "Routine Flow Architect", "version": "8.1.0", "status": "Online (MongoDB Core)"}), 200
 
 @app.route('/get_state', methods=['GET'])
 def get_state(): 
@@ -182,7 +182,7 @@ def chat():
         recent_chat.reverse()
         memory = [{"Timestamp": m["timestamp"], "Role": m["role"], "Message": m["text"]} for m in recent_chat]
             
-        p_doc = db.settings.find_one({"_id": "priorities"})
+        p_doc = db.priorities.find_one({"_id": "priorities"})
         user_priorities = p_doc.get("data", {}) if p_doc else {}
                     
         prompt = f"""
@@ -324,7 +324,7 @@ def get_priorities():
                 if "study" in act_name.lower(): act_name = "Study"
                 unique_activities.add(act_name)
                     
-        p_doc = db.settings.find_one({"_id": "priorities"})
+        p_doc = db.priorities.find_one({"_id": "priorities"})
         saved_priorities = p_doc.get("data", {}) if p_doc else {}
                     
         final_priorities = {}
@@ -335,7 +335,7 @@ def get_priorities():
 @app.route('/save_priorities', methods=['POST'])
 def save_priorities():
     try:
-        db.settings.update_one({"_id": "priorities"}, {"$set": {"data": request.json}}, upsert=True)
+        db.priorities.update_one({"_id": "priorities"}, {"$set": {"data": request.json}}, upsert=True)
         return jsonify({"status": "success", "message": "Priorities synced."}), 200
     except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -397,4 +397,4 @@ def get_analytics():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
-# end of version v8.0.0
+# end of version v8.1.0
